@@ -19,9 +19,12 @@ namespace {
     std::atomic<uint32_t> g_active_seed{ 0 };
     std::atomic<uint32_t> g_last_true_lines{ 0 };
     std::atomic<uint32_t> g_last_blocks_made{ 0 };
+    std::atomic<uint32_t> g_live_cubes_made{ 0 };
 
     constexpr uint32_t SEED_ADDR = 0x80129340;
     constexpr uint32_t GAME_FRAMES_ADDR = 0x8011EEE8;
+    constexpr uint32_t PLAYER_PTR_TABLE = 0x8011EB2C;
+    constexpr uint32_t PLAYER0_FALLBACK = 0x8011EB3C;
 
     uint32_t parse_seed_string(const std::string& s) {
         if (s.empty()) return 0;
@@ -36,7 +39,6 @@ namespace {
     }
 
     void send_discord_webhook_post(const std::string& webhook_url, const std::string& json_payload) {
-        // Write payload to a temporary file to avoid shell escaping issues
         char tmp_path[512] = {};
 #if defined(_WIN32)
         char tmp_dir[MAX_PATH];
@@ -50,7 +52,6 @@ namespace {
             fwrite(json_payload.data(), 1, json_payload.size(), fp);
             fclose(fp);
 
-            // Execute curl in silent mode
             std::string cmd = "curl -s -X POST -H \"Content-Type: application/json\" --data-binary \"@" + std::string(tmp_path) + "\" \"" + webhook_url + "\"";
             int ret = std::system(cmd.c_str());
             (void)ret;
@@ -64,25 +65,34 @@ extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
     const auto& s = tnt::settings();
     uint32_t seed = 0;
 
+    // Reset match live counters on match start
+    g_live_cubes_made.store(0);
+
     if (s.seeded_run) {
         seed = parse_seed_string(s.custom_seed);
         g_active_seed.store(seed);
 
-        // 0x80129340 is the game's PRNG seed in RDRAM
         uint32_t phys_offset = (SEED_ADDR & 0x7FFFFC);
         *reinterpret_cast<uint32_t*>(rdram + phys_offset) = seed;
 
-        // Propagate to all 4 player slots
         for (int p = 1; p < 4; ++p) {
             *reinterpret_cast<uint32_t*>(rdram + phys_offset + (p * 4)) = seed;
         }
-        printf("[Tournament Edition] Active Seed Override Applied: 0x%08X (%u)\n", seed, seed);
+        if (ctx) {
+            ctx->r3 = seed;
+        }
+        printf("[Tournament Edition] Match Seed Override Applied: 0x%08X (%u)\n", seed, seed);
     } else {
-        // Store the hardware-generated seed for reporting
         uint32_t phys_offset = (SEED_ADDR & 0x7FFFFC);
         seed = *reinterpret_cast<uint32_t*>(rdram + phys_offset);
         g_active_seed.store(seed);
     }
+}
+
+extern "C" void tnt_on_cube_formed(uint8_t* rdram, recomp_context* ctx) {
+    (void)rdram; (void)ctx;
+    g_live_cubes_made++;
+    printf("[Tournament Edition] Cube formed! Total cubes: %u\n", g_live_cubes_made.load());
 }
 
 namespace tnt::tournament {
@@ -102,10 +112,26 @@ namespace tnt::tournament {
         stats.in_game = true;
         stats.game_seconds = frames / 60;
 
-        // Player 0 stats from RDRAM
-        // In TNT, player 0 active state block is at 0x8011EB3C
-        stats.true_lines = g_last_true_lines.load();
-        stats.blocks_made = g_last_blocks_made.load();
+        // Locate Player 0 object in RDRAM
+        uint32_t p0_ptr = *reinterpret_cast<uint32_t*>(rdram + (PLAYER_PTR_TABLE & 0x7FFFFC));
+        uint32_t p0_phys = 0;
+        if ((p0_ptr >> 24) == 0x80) {
+            p0_phys = p0_ptr & 0x7FFFFC;
+        } else {
+            p0_phys = (PLAYER0_FALLBACK & 0x7FFFFC);
+        }
+
+        // Live physical lines actually cleared ("True Lines")
+        stats.true_lines = *reinterpret_cast<uint32_t*>(rdram + p0_phys + 0x440);
+
+        // Live score lines (including tetris & cube bonus lines)
+        uint32_t s1 = *reinterpret_cast<uint32_t*>(rdram + p0_phys + 0x6820);
+        uint32_t s2 = *reinterpret_cast<uint32_t*>(rdram + p0_phys + 0x6824);
+        stats.total_score = s1 | s2;
+
+        // Blocks / Cubes made: combine formed cubes and score difference
+        uint32_t cubes_from_score = (stats.total_score > stats.true_lines) ? ((stats.total_score - stats.true_lines) / 10) : 0;
+        stats.blocks_made = std::max<uint32_t>(g_live_cubes_made.load(), cubes_from_score);
 
         if (stats.game_seconds > 0) {
             stats.lpm = (static_cast<float>(stats.true_lines) / (static_cast<float>(stats.game_seconds) / 60.0f));
@@ -117,6 +143,7 @@ namespace tnt::tournament {
     void on_match_finish(int mode, const std::string& name, uint32_t score, uint32_t true_lines, uint32_t seconds) {
         g_last_true_lines.store(true_lines);
         uint32_t cubes = (score > true_lines) ? ((score - true_lines) / 10) : 0;
+        cubes = std::max<uint32_t>(cubes, g_live_cubes_made.load());
         g_last_blocks_made.store(cubes);
 
         const auto& s = tnt::settings();
@@ -148,7 +175,6 @@ namespace tnt::tournament {
         std::string webhook = s.discord_webhook;
         std::string payload = json.str();
 
-        // Launch in background detached thread so gameplay never hitches
         std::thread([webhook, payload]() {
             send_discord_webhook_post(webhook, payload);
         }).detach();

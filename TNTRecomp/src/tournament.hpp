@@ -21,5 +21,6 @@ namespace tnt::tournament {
     void on_match_finish(int mode, const std::string& name, uint32_t score, uint32_t true_lines, uint32_t seconds);
 }
 
-// Hook called when the game initializes the seed (func_800A3550)
+// Hooks
 extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx);
+extern "C" void tnt_on_cube_formed(uint8_t* rdram, recomp_context* ctx);

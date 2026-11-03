@@ -1690,6 +1690,7 @@ L_8006A02C:
 RECOMP_FUNC void func_8006A050(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
+    tnt_on_cube_formed(rdram, ctx);
     // 0x8006A050: addiu       $sp, $sp, -0x88
     ctx->r29 = ADD32(ctx->r29, -0X88);
     // 0x8006A054: sw          $s0, 0x14($sp)

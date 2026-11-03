@@ -265,10 +265,11 @@ namespace {
     void draw_tournament_hud(DlWriter& w, uint32_t cimg0, int width, int height, const tnt::tournament::LiveStats& st) {
         if (!st.in_game) return;
         const int s = width >= 640 ? 2 : 1;
-        int x = 8;
-        int y = height / 3;
         int box_w = 95 * s;
         int box_h = 56 * s;
+        // Position on the right side over the scorecard
+        int x = width - box_w - 6 * s;
+        int y = (height >= 480) ? 140 : 70;
 
         // Dark background box
         set_color(w, cimg0, 10, 14, 28);
