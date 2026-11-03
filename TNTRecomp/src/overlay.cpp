@@ -234,69 +234,148 @@ namespace {
         }
     }
 
-    // In-game Tournament Options modal dialog (replaces Credits screen)
+    // Draw 3D beveled box in authentic The New Tetris aesthetic
+    void draw_beveled_box(DlWriter& w, uint32_t cimg0, int x0, int y0, int x1, int y1, int s) {
+        // Outer highlight (top and left): bright gold
+        set_color(w, cimg0, 255, 235, 110);
+        rect(w, x0, y0, x1, y0 + s - 1);
+        rect(w, x0, y0, x0 + s - 1, y1);
+
+        // Outer shadow (bottom and right): deep bronze
+        set_color(w, cimg0, 110, 75, 15);
+        rect(w, x0, y1 - s + 1, x1, y1);
+        rect(w, x1 - s + 1, y0, x1, y1);
+
+        // Inner bevel line: warm gold
+        set_color(w, cimg0, 215, 165, 50);
+        rect(w, x0 + s, y0 + s, x1 - s, y0 + 2 * s - 1);
+        rect(w, x0 + s, y1 - 2 * s + 1, x1 - s, y1 - s);
+        rect(w, x0 + s, y0 + s, x0 + 2 * s - 1, y1 - s);
+        rect(w, x1 - 2 * s + 1, y0 + s, x1 - s, y1 - s);
+
+        // Corner decorative accent blocks
+        set_color(w, cimg0, 255, 255, 160);
+        rect(w, x0 + s, y0 + s, x0 + 2 * s, y0 + 2 * s);
+        rect(w, x1 - 2 * s, y0 + s, x1 - s, y0 + 2 * s);
+        rect(w, x0 + s, y1 - 2 * s, x0 + 2 * s, y1 - s);
+        rect(w, x1 - 2 * s, y1 - 2 * s, x1 - s, y1 - s);
+
+        // Background fill: authentic TNT midnight navy
+        set_color(w, cimg0, 12, 16, 36);
+        rect(w, x0 + 2 * s, y0 + 2 * s, x1 - 2 * s, y1 - 2 * s);
+    }
+
+    // Mini 4x4 Cube block (Gold or Silver)
+    void draw_mini_cube(DlWriter& w, uint32_t cimg0, int x, int y, int s, bool gold) {
+        uint8_t r = gold ? 255 : 220;
+        uint8_t g = gold ? 215 : 230;
+        uint8_t b = gold ? 50 : 255;
+        uint8_t sr = gold ? 140 : 130;
+        uint8_t sg = gold ? 100 : 140;
+        uint8_t sb = gold ? 20 : 160;
+
+        int sz = 7 * s;
+        set_color(w, cimg0, r, g, b);
+        rect(w, x, y, x + sz, y + sz);
+        // Bevel / cross grid lines
+        set_color(w, cimg0, sr, sg, sb);
+        rect(w, x + 3 * s, y, x + 4 * s - 1, y + sz);
+        rect(w, x, y + 3 * s, x + sz, y + 4 * s - 1);
+        // Highlight top & left
+        set_color(w, cimg0, 255, 255, gold ? 180 : 255);
+        rect(w, x, y, x + sz, y);
+        rect(w, x, y, x, y + sz);
+    }
+
+    // In-game Tournament Options modal dialog (replaces Credits screen / entered from mode select)
     void draw_tournament_options(DlWriter& w, uint32_t cimg0, int width, int height) {
         auto state = tnt::tournament::get_menu_render_state();
         const int s = width >= 640 ? 2 : 1;
         const int cw = 6 * s, lh = 12 * s;
-        const int cols = 33;
+        const int cols = 36;
 
-        struct Line { std::string text; int color; }; // 0 white, 1 gold, 2 gray, 3 cyan, 4 green
+        struct Line { std::string text; int color; }; // 0 white, 1 gold, 2 gray, 3 cyan, 4 green, 5 yellow, 6 orange
         std::vector<Line> lines;
-        lines.push_back({ "   TOURNAMENT OPTIONS", 1 });
+
+        lines.push_back({ "* TOURNAMENT MODE SETUP *", 1 });
         lines.push_back({ "", 0 });
 
         char buf[64];
-        // Row 0: Seeded Run
-        snprintf(buf, sizeof(buf), "%s SEEDED RUN:      <%s>", state.selected_row == 0 ? ">" : " ", state.seeded_run ? "ENABLED " : "DISABLED");
-        lines.push_back({ buf, state.selected_row == 0 ? 1 : (state.seeded_run ? 4 : 2) });
+        // Row 0: Mode Select
+        const char* mode_str = (state.tournament_mode == 0) ? "MARATHON" :
+                              (state.tournament_mode == 1 ? "SPRINT (3 MIN)" : "ULTRA (150L)");
+        snprintf(buf, sizeof(buf), "%s MODE:         <%s>", state.selected_row == 0 ? ">" : " ", mode_str);
+        lines.push_back({ buf, state.selected_row == 0 ? 1 : 5 });
 
-        // Row 1: Seed Value
-        snprintf(buf, sizeof(buf), "%s SEED:       <0x%08X>", state.selected_row == 1 ? ">" : " ", state.current_seed);
-        lines.push_back({ buf, state.selected_row == 1 ? 1 : 3 });
+        // Row 1: Seeded Run
+        snprintf(buf, sizeof(buf), "%s SEEDED RUN:   <%s>", state.selected_row == 1 ? ">" : " ", state.seeded_run ? "ENABLED " : "DISABLED");
+        lines.push_back({ buf, state.selected_row == 1 ? 1 : (state.seeded_run ? 4 : 2) });
 
-        // Row 2: Sidebar HUD
-        snprintf(buf, sizeof(buf), "%s SIDEBAR HUD:     <%s>", state.selected_row == 2 ? ">" : " ", state.hud_enabled ? "ON " : "OFF");
-        lines.push_back({ buf, state.selected_row == 2 ? 1 : (state.hud_enabled ? 4 : 2) });
+        // Row 2: Match Seed
+        snprintf(buf, sizeof(buf), "%s MATCH SEED:   <0x%08X>", state.selected_row == 2 ? ">" : " ", state.current_seed);
+        lines.push_back({ buf, state.selected_row == 2 ? 1 : 3 });
 
-        // Row 3: Discord Share
-        snprintf(buf, sizeof(buf), "%s DISCORD POST:    <%s>", state.selected_row == 3 ? ">" : " ", state.discord_enabled ? "ON " : "OFF");
-        lines.push_back({ buf, state.selected_row == 3 ? 1 : (state.discord_enabled ? 4 : 2) });
+        // Row 3: Randomize Seed
+        snprintf(buf, sizeof(buf), "%s RANDOMIZE SEED", state.selected_row == 3 ? ">" : " ");
+        lines.push_back({ buf, state.selected_row == 3 ? 1 : 0 });
 
-        // Row 4: Randomize Seed
-        snprintf(buf, sizeof(buf), "%s RANDOMIZE SEED", state.selected_row == 4 ? ">" : " ");
-        lines.push_back({ buf, state.selected_row == 4 ? 1 : 0 });
+        // Row 4: Sidebar HUD
+        snprintf(buf, sizeof(buf), "%s SIDEBAR HUD:  <%s>", state.selected_row == 4 ? ">" : " ", state.hud_enabled ? "ON " : "OFF");
+        lines.push_back({ buf, state.selected_row == 4 ? 1 : (state.hud_enabled ? 4 : 2) });
 
-        // Row 5: Save & Return
-        snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 5 ? ">" : " ");
-        lines.push_back({ buf, state.selected_row == 5 ? 1 : 0 });
+        // Row 5: Discord Share
+        snprintf(buf, sizeof(buf), "%s DISCORD POST: <%s>", state.selected_row == 5 ? ">" : " ", state.discord_enabled ? "ON " : "OFF");
+        lines.push_back({ buf, state.selected_row == 5 ? 1 : (state.discord_enabled ? 4 : 2) });
+
+        // Row 6: Start Tournament Match
+        snprintf(buf, sizeof(buf), "%s START TOURNAMENT MATCH", state.selected_row == 6 ? ">" : " ");
+        lines.push_back({ buf, state.selected_row == 6 ? 1 : 6 });
+
+        // Row 7: Save & Return
+        snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 7 ? ">" : " ");
+        lines.push_back({ buf, state.selected_row == 7 ? 1 : 0 });
 
         lines.push_back({ "", 0 });
-        lines.push_back({ " D-PAD: SELECT / TWEAK SEED", 2 });
-        lines.push_back({ " A/L/R: TWEAK   B: SAVE & RETURN", 2 });
+        lines.push_back({ " [A] SELECT/TOGGLE   [B] BACK", 2 });
+        lines.push_back({ " [D-PAD] ADJUST      [L/R] +-0x1000", 2 });
+        lines.push_back({ " [START] PLAY MATCH DIRECTLY", 1 });
 
-        int pw = cols * cw + 18 * s, ph = int(lines.size()) * lh + 16 * s;
+        int pw = cols * cw + 24 * s, ph = int(lines.size()) * lh + 20 * s;
         int x0 = (width - pw) / 2, y0 = (height - ph) / 2;
         if (x0 < 0 || y0 < 0) return;
 
-        set_color(w, cimg0, 222, 170, 60); // border
-        rect(w, x0, y0, x0 + pw - 1, y0 + ph - 1);
-        set_color(w, cimg0, 14, 16, 36);   // background
-        rect(w, x0 + s, y0 + s, x0 + pw - 1 - s, y0 + ph - 1 - s);
+        // Draw authentic ornate beveled panel
+        draw_beveled_box(w, cimg0, x0, y0, x0 + pw - 1, y0 + ph - 1, s);
 
-        // Highlight selected row (rows 0-5 correspond to lines indices 2-7)
+        // Decorative mini-cubes on header
+        draw_mini_cube(w, cimg0, x0 + 10 * s, y0 + 7 * s, s, true);
+        draw_mini_cube(w, cimg0, x0 + pw - 18 * s, y0 + 7 * s, s, false);
+
+        // Accent line under title
+        set_color(w, cimg0, 190, 150, 45);
+        rect(w, x0 + 8 * s, y0 + 19 * s, x0 + pw - 9 * s, y0 + 19 * s + s - 1);
+
+        // Glowing selection pill highlight
         int sel_line = 2 + state.selected_row;
-        int hl_y0 = y0 + 8 * s + sel_line * lh - 1 * s;
+        int hl_y0 = y0 + 10 * s + sel_line * lh - 1 * s;
         int hl_y1 = hl_y0 + lh - 1 * s;
-        set_color(w, cimg0, 35, 45, 80);
-        rect(w, x0 + 4 * s, hl_y0, x0 + pw - 5 * s, hl_y1);
 
-        const uint8_t colors[5][3] = {
-            { 236, 236, 244 }, // 0: white
-            { 255, 200, 70 },  // 1: gold
-            { 140, 144, 180 }, // 2: gray
-            { 120, 220, 255 }, // 3: cyan
-            { 90, 230, 120 }   // 4: green
+        // Pill background
+        set_color(w, cimg0, 30, 50, 95);
+        rect(w, x0 + 6 * s, hl_y0, x0 + pw - 7 * s, hl_y1);
+        // Pill top/bottom glow border
+        set_color(w, cimg0, 80, 160, 240);
+        rect(w, x0 + 6 * s, hl_y0, x0 + pw - 7 * s, hl_y0 + s - 1);
+        rect(w, x0 + 6 * s, hl_y1 - s + 1, x0 + pw - 7 * s, hl_y1);
+
+        const uint8_t colors[7][3] = {
+            { 240, 240, 248 }, // 0: white
+            { 255, 215, 60 },  // 1: gold
+            { 145, 155, 185 }, // 2: gray
+            { 110, 225, 255 }, // 3: cyan
+            { 90, 235, 120 },  // 4: green
+            { 255, 230, 110 }, // 5: yellow
+            { 255, 140, 40 }   // 6: orange
         };
 
         int last_color = -1;
@@ -307,7 +386,7 @@ namespace {
                 set_color(w, cimg0, colors[c][0], colors[c][1], colors[c][2]);
                 last_color = c;
             }
-            text(w, x0 + 8 * s, y0 + 8 * s + int(i) * lh, s, lines[i].text);
+            text(w, x0 + 10 * s, y0 + 10 * s + int(i) * lh, s, lines[i].text);
         }
     }
 #endif
@@ -337,47 +416,50 @@ namespace {
     void draw_tournament_hud(DlWriter& w, uint32_t cimg0, int width, int height, const tnt::tournament::LiveStats& st) {
         if (!st.in_game) return;
         const int s = width >= 640 ? 2 : 1;
-        int box_w = 95 * s;
-        int box_h = 58 * s;
+        int box_w = 98 * s;
+        int box_h = 60 * s;
         // Position on the right side over the scorecard
         int x = width - box_w - 6 * s;
         int y = (height >= 480) ? 140 : 70;
 
-        // Dark background box
-        set_color(w, cimg0, 10, 14, 28);
-        rect(w, x - 2, y - 2, x + box_w, y + box_h);
+        // Draw authentic beveled card frame
+        draw_beveled_box(w, cimg0, x - 2, y - 2, x + box_w, y + box_h, s);
 
-        // Gold border
-        set_color(w, cimg0, 222, 170, 60);
-        rect(w, x - 2, y - 2, x + box_w, y - 1);
-        rect(w, x - 2, y + box_h - 1, x + box_w, y + box_h);
-        rect(w, x - 2, y - 2, x - 1, y + box_h);
-        rect(w, x + box_w - 1, y - 2, x + box_w, y + box_h);
+        // Decorative mini-cube icon
+        draw_mini_cube(w, cimg0, x + 3 * s, y + 2 * s, s, true);
 
         // Header: TOURNAMENT
-        set_color(w, cimg0, 255, 200, 70);
-        text(w, x + 4 * s, y + 3 * s, s, "TOURNAMENT");
+        set_color(w, cimg0, 255, 215, 60);
+        text(w, x + 13 * s, y + 3 * s, s, "TOURNAMENT");
 
-        // Line 1: TRUE LINES
+        // Accent line under header
+        set_color(w, cimg0, 180, 140, 40);
+        rect(w, x + 2 * s, y + 12 * s, x + box_w - 3 * s, y + 12 * s + s - 1);
+
         char buf[64];
-        set_color(w, cimg0, 236, 236, 244);
+        // Line 1: TRUE LINES
+        set_color(w, cimg0, 240, 240, 250);
         snprintf(buf, sizeof(buf), "TRUE L: %u", st.true_lines);
-        text(w, x + 4 * s, y + 15 * s, s, buf);
+        text(w, x + 4 * s, y + 16 * s, s, buf);
 
         // Line 2: LPM
+        set_color(w, cimg0, 255, 210, 70);
         snprintf(buf, sizeof(buf), "LPM:    %.1f", st.lpm);
-        text(w, x + 4 * s, y + 26 * s, s, buf);
+        text(w, x + 4 * s, y + 27 * s, s, buf);
 
         // Line 3: BLOCKS / CUBES
+        set_color(w, cimg0, 200, 215, 240);
         snprintf(buf, sizeof(buf), "BLOCKS: %u", st.blocks_made);
-        text(w, x + 4 * s, y + 37 * s, s, buf);
+        text(w, x + 4 * s, y + 38 * s, s, buf);
 
-        // Line 4: SEED (read directly from RDRAM live PRNG state)
-        uint32_t seed_to_show = st.live_seed ? st.live_seed : st.active_seed;
-        if (seed_to_show != 0) {
-            snprintf(buf, sizeof(buf), "SEED:%08X", seed_to_show);
-            set_color(w, cimg0, 120, 220, 255);
-            text(w, x + 4 * s, y + 48 * s, s, buf);
+        // Line 4: STATIC MATCH SEED (Constant throughout the match)
+        if (st.seeded) {
+            snprintf(buf, sizeof(buf), "SEED:%08X", st.active_seed);
+            set_color(w, cimg0, 110, 225, 255);
+            text(w, x + 4 * s, y + 49 * s, s, buf);
+        } else {
+            set_color(w, cimg0, 160, 175, 205);
+            text(w, x + 4 * s, y + 49 * s, s, "SEED: RANDOM");
         }
     }
 

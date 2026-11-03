@@ -8417,6 +8417,14 @@ L_800A2958:
     ctx->r5 = S32(0X800D << 16);
     // 0x800A299C: lbu         $a1, 0x5688($a1)
     ctx->r5 = MEM_BU(ctx->r5, 0X5688);
+    if (ctx->r5 == 3) {
+        ctx->r1 = S32(0X800D << 16);
+        MEM_H(-0X12C, ctx->r1) = 2;
+        MEM_B(-0X118, ctx->r1) = 16;
+        ctx->r31 = MEM_W(ctx->r29, 0X14);
+        ctx->r29 = ADD32(ctx->r29, 0X20);
+        return;
+    }
     // 0x800A29A0: addiu       $a0, $zero, 0x2
     ctx->r4 = ADD32(0, 0X2);
     // 0x800A29A4: jal         0x80042800

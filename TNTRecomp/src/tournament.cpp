@@ -14,12 +14,14 @@
 #endif
 
 namespace {
-    std::atomic<uint32_t> g_active_seed{ 0 };
+    std::atomic<uint32_t> g_match_initial_seed{ 0x12345678 };
+    std::atomic<uint32_t> g_bag_counter{ 0 };
     std::atomic<uint32_t> g_last_true_lines{ 0 };
     std::atomic<uint32_t> g_last_blocks_made{ 0 };
     std::atomic<uint32_t> g_live_cubes_made{ 0 };
     std::atomic<bool> g_is_in_match{ false };
     std::atomic<bool> g_options_menu_open{ false };
+    std::atomic<bool> g_launch_match_direct{ false };
 
     constexpr uint32_t SEED_ADDR = 0x80129340;
     constexpr uint32_t FLOAT_SEED_ADDR = 0x80129358;
@@ -66,6 +68,7 @@ namespace {
 
     struct TournamentMenuInternalState {
         int selected_row = 0;
+        int tournament_mode = 0; // 0: Marathon, 1: Sprint, 2: Ultra
         uint32_t current_seed = 0x12345678;
         bool seeded_run = false;
         bool hud_enabled = true;
@@ -99,7 +102,7 @@ namespace {
 
 namespace tnt::tournament {
     uint32_t read_live_seed(uint8_t* rdram) {
-        if (!rdram) return g_active_seed.load();
+        if (!rdram) return g_match_initial_seed.load();
         return rd32(rdram, SEED_ADDR);
     }
 
@@ -110,6 +113,7 @@ namespace tnt::tournament {
     MenuRenderState get_menu_render_state() {
         MenuRenderState s;
         s.selected_row = g_menu_state.selected_row;
+        s.tournament_mode = g_menu_state.tournament_mode;
         s.seeded_run = g_menu_state.seeded_run;
         s.current_seed = g_menu_state.current_seed;
         s.hud_enabled = g_menu_state.hud_enabled;
@@ -118,10 +122,17 @@ namespace tnt::tournament {
     }
 }
 
+extern "C" uint8_t tnt_get_scene16_exit_scene(void) {
+    if (g_launch_match_direct.exchange(false)) {
+        return 9; // Launch single-player match directly
+    }
+    return 4; // Return to Options / Main menu
+}
+
 extern "C" void tnt_apply_menu_patches(uint8_t* rdram) {
     if (!rdram) return;
 
-    // Options menu item #4 pointer in RDRAM (VRAM 0x800D5518)
+    // 1. Options menu item #4 pointer in RDRAM (VRAM 0x800D5518)
     constexpr uint32_t credits_ptr_phys = 0x000D5518;
     constexpr uint32_t tourney_label_vram = 0x807E0040;
 
@@ -134,6 +145,75 @@ extern "C" void tnt_apply_menu_patches(uint8_t* rdram) {
 
         printf("[Tournament Edition] Options menu patched: CREDITS -> TOURNAMENT\n");
     }
+
+    // 2. 1-Player Game Mode selection menu in RDRAM (VRAM 0x800D5680)
+    // Add "TOURNAMENT" as Option #4 alongside Marathon, Sprint, Ultra
+    constexpr uint32_t mode_table_ptr_phys = 0x000D5680;
+    constexpr uint32_t mode_table_count_phys = 0x000D567C;
+    constexpr uint32_t custom_mode_table_vram = 0x807E1000;
+
+    if (rd32(rdram, mode_table_ptr_phys) != custom_mode_table_vram) {
+        // Copy the original 3 entries (Marathon, Sprint, Ultra: 36 bytes each)
+        for (uint32_t i = 0; i < 3 * 36; i += 4) {
+            wr32(rdram, custom_mode_table_vram + i, rd32(rdram, 0x000D5610 + i));
+        }
+
+        // Add 4th entry: TOURNAMENT
+        uint32_t entry4 = custom_mode_table_vram + (3 * 36);
+        wr32(rdram, entry4 + 0x00, tourney_label_vram); // String pointer "TOURNAMENT"
+        wr32(rdram, entry4 + 0x04, 0x00000000);
+        wr32(rdram, entry4 + 0x08, 0x00000100);        // X position
+        wr32(rdram, entry4 + 0x0C, 0x000000A6);        // Y position
+        wr32(rdram, entry4 + 0x10, 0x000000FF);        // R
+        wr32(rdram, entry4 + 0x14, 0x000000DF);        // G (Gold tint)
+        wr32(rdram, entry4 + 0x18, 0x00000040);        // B
+        wr32(rdram, entry4 + 0x1C, 0x000000A0);        // Alpha
+        wr32(rdram, entry4 + 0x20, 0x00000000);
+
+        // Update count to 4 (big-endian 0x04000000)
+        wr32(rdram, mode_table_count_phys, 0x04000000);
+        // Point mode table descriptor to our 4-entry table
+        wr32(rdram, mode_table_ptr_phys, custom_mode_table_vram);
+
+        printf("[Tournament Edition] Mode Select menu patched: Added 4th option 'TOURNAMENT'\n");
+    }
+}
+
+extern "C" void tnt_on_bag_generate(uint8_t* rdram, recomp_context* ctx) {
+    if (!rdram) return;
+    (void)ctx;
+    const auto& s = tnt::settings();
+    if (!s.seeded_run) return;
+
+    uint32_t base_seed = g_match_initial_seed.load();
+    if (base_seed == 0) {
+        base_seed = parse_seed_string(s.custom_seed);
+        if (base_seed == 0) base_seed = 0x12345678;
+        g_match_initial_seed.store(base_seed);
+    }
+
+    uint32_t bag_idx = g_bag_counter.fetch_add(1);
+
+    // Compute deterministic seed for bag `bag_idx`:
+    // Knuth's 32-bit multiplicative hash using the golden ratio constant (0x9E3779B9)
+    // Bag 0 = base_seed
+    // Bag 1 = base_seed + 1 * 0x9E3779B9
+    // Bag 2 = base_seed + 2 * 0x9E3779B9 ...
+    uint32_t bag_seed = base_seed + (bag_idx * 0x9E3779B9u);
+    if (bag_seed == 0) bag_seed = 0x12345678;
+
+    for (int p = 0; p < 4; ++p) {
+        wr32(rdram, SEED_ADDR + (p * 4), bag_seed);
+    }
+
+    float f_val = static_cast<float>(bag_seed % 100001u);
+    uint32_t f_u32 = 0;
+    memcpy(&f_u32, &f_val, sizeof(float));
+    for (int p = 0; p < 4; ++p) {
+        wr32(rdram, FLOAT_SEED_ADDR + (p * 4), f_u32);
+    }
+
+    printf("[Tournament Edition] Deterministic Bag #%u Seed Applied: 0x%08X\n", bag_idx, bag_seed);
 }
 
 extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
@@ -144,6 +224,7 @@ extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
 
     // Reset match live counters on match start
     g_live_cubes_made.store(0);
+    g_bag_counter.store(0);
     g_is_in_match.store(true);
 
     if (s.seeded_run) {
@@ -163,12 +244,13 @@ extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
             wr32(rdram, FLOAT_SEED_ADDR + (p * 4), f_u32);
         }
 
-        printf("[Tournament Edition] Match Seed Applied: 0x%08X (%u)\n", seed, seed);
+        g_match_initial_seed.store(seed);
+        printf("[Tournament Edition] Match Initial Seed Applied: 0x%08X (%u)\n", seed, seed);
+    } else {
+        seed = tnt::tournament::read_live_seed(rdram);
+        g_match_initial_seed.store(seed);
+        printf("[Tournament Edition] Match Initial Random Seed: 0x%08X (%u)\n", seed, seed);
     }
-
-    // Read live PRNG seed back directly from RDRAM to verify
-    seed = tnt::tournament::read_live_seed(rdram);
-    g_active_seed.store(seed);
 }
 
 extern "C" void tnt_on_cube_formed(uint8_t* rdram, recomp_context* ctx) {
@@ -194,7 +276,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
         return 0;
     }
     if (state == 2) {
-        // Exit / teardown in progress: let original teardown run to cleanly return to scene 4
+        // Exit / teardown in progress: let original teardown run cleanly
         g_options_menu_open.store(false);
         g_menu_state.initialized = false;
         return 0;
@@ -205,6 +287,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
 
     if (!g_menu_state.initialized) {
         const auto& s = tnt::settings();
+        g_menu_state.tournament_mode = 0; // Default: Marathon
         g_menu_state.seeded_run = s.seeded_run;
         g_menu_state.current_seed = parse_seed_string(s.custom_seed);
         if (g_menu_state.current_seed == 0) g_menu_state.current_seed = 0x12345678;
@@ -245,7 +328,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
     }
     s_last_buttons = buttons;
 
-    constexpr int NUM_ROWS = 6;
+    constexpr int NUM_ROWS = 8;
     if (pressed & 0x0800) { // Up
         g_menu_state.selected_row = (g_menu_state.selected_row + NUM_ROWS - 1) % NUM_ROWS;
     }
@@ -254,14 +337,23 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
     }
 
     bool exit_menu = false;
+    bool launch_match = false;
 
     switch (g_menu_state.selected_row) {
-        case 0: // Seeded Run
+        case 0: // Tournament Mode: 0 = Marathon, 1 = Sprint (3 Min), 2 = Ultra (150 Lines)
+            if (pressed & 0x0100) { // Right
+                g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 1) % 3;
+            }
+            if (pressed & (0x0200 | 0x8000)) { // Left or A
+                g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 2) % 3;
+            }
+            break;
+        case 1: // Seeded Run
             if (pressed & (0x0200 | 0x0100 | 0x8000)) {
                 g_menu_state.seeded_run = !g_menu_state.seeded_run;
             }
             break;
-        case 1: // Custom Seed Adjust
+        case 2: // Match Seed Adjust
             if (pressed & 0x0100) g_menu_state.current_seed++;
             if (pressed & 0x0200) g_menu_state.current_seed--;
             if (pressed & 0x0010) g_menu_state.current_seed += 0x1000; // R
@@ -270,30 +362,36 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
                 g_menu_state.current_seed = ((uint32_t)rand() << 16) ^ (uint32_t)rand();
             }
             break;
-        case 2: // Sidebar HUD
-            if (pressed & (0x0200 | 0x0100 | 0x8000)) {
-                g_menu_state.hud_enabled = !g_menu_state.hud_enabled;
-            }
-            break;
-        case 3: // Discord Share
-            if (pressed & (0x0200 | 0x0100 | 0x8000)) {
-                g_menu_state.discord_enabled = !g_menu_state.discord_enabled;
-            }
-            break;
-        case 4: // Randomize Seed
+        case 3: // Randomize Seed Action
             if (pressed & (0x8000 | 0x0200 | 0x0100)) {
                 g_menu_state.current_seed = ((uint32_t)rand() << 16) ^ (uint32_t)rand();
             }
             break;
-        case 5: // Save & Return
+        case 4: // Sidebar HUD
+            if (pressed & (0x0200 | 0x0100 | 0x8000)) {
+                g_menu_state.hud_enabled = !g_menu_state.hud_enabled;
+            }
+            break;
+        case 5: // Discord Share
+            if (pressed & (0x0200 | 0x0100 | 0x8000)) {
+                g_menu_state.discord_enabled = !g_menu_state.discord_enabled;
+            }
+            break;
+        case 6: // Start Tournament Match
+            if (pressed & (0x8000 | 0x1000)) {
+                launch_match = true;
+                exit_menu = true;
+            }
+            break;
+        case 7: // Save & Return
             if (pressed & (0x8000 | 0x1000)) {
                 exit_menu = true;
             }
             break;
     }
 
-    // B button or Start exits and saves
-    if (pressed & (0x4000 | 0x1000)) {
+    // B button exits and saves
+    if (pressed & 0x4000) {
         exit_menu = true;
     }
 
@@ -307,15 +405,21 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
         s.enable_discord = g_menu_state.discord_enabled;
 
         tnt::save_settings(tnt::settings_path(), s);
-        printf("[Tournament Options] Saved settings: Seeded=%d Seed=%s HUD=%d Discord=%d\n",
-               s.seeded_run, s.custom_seed.c_str(), s.tournament_hud, s.enable_discord);
+        printf("[Tournament Options] Saved settings: Mode=%d Seeded=%d Seed=%s HUD=%d Discord=%d\n",
+               g_menu_state.tournament_mode, s.seeded_run, s.custom_seed.c_str(), s.tournament_hud, s.enable_discord);
+
+        // Apply mode directly to RDRAM
+        wr8(rdram, 0x800D5688, static_cast<uint8_t>(g_menu_state.tournament_mode));
+        wr8(rdram, 0x8012EEEC, static_cast<uint8_t>(g_menu_state.tournament_mode));
+        wr8(rdram, 0x8011EEEC, static_cast<uint8_t>(g_menu_state.tournament_mode));
 
         g_options_menu_open.store(false);
         g_menu_state.initialized = false;
+        g_launch_match_direct.store(launch_match);
 
-        // Transition back to Options Menu by triggering the game's native Scene 16 teardown (sub-state 2)
+        // Transition back via the game's native Scene 16 teardown (sub-state 2)
         wr32(rdram, 0x800D3330, 2);
-        return 0; // Return 0 so func_80083470 executes L_80083504 and transitions back cleanly to Scene 4!
+        return 0; // Return 0 so func_80083470 executes L_80083504 cleanly
     }
 
     return 1; // Suppress original credits scrolling and drawing
@@ -325,7 +429,12 @@ namespace tnt::tournament {
 
     LiveStats get_live_stats(uint8_t* rdram, uint64_t frame) {
         LiveStats stats;
-        stats.active_seed = g_active_seed.load();
+        const auto& s = tnt::settings();
+        stats.seeded = s.seeded_run;
+        stats.active_seed = g_match_initial_seed.load();
+        if (stats.active_seed == 0 && stats.seeded) {
+            stats.active_seed = parse_seed_string(s.custom_seed);
+        }
 
         if (!rdram) return stats;
 
@@ -335,7 +444,7 @@ namespace tnt::tournament {
         uint8_t scene = rd8(rdram, SCENE_ADDR);
         bool is_game_scene = (scene == 9 || scene == 12 || scene == 14);
 
-        if (!is_game_scene || !g_is_in_match.load()) {
+        if (!is_game_scene) {
             stats.in_game = false;
             return stats;
         }
@@ -359,6 +468,7 @@ namespace tnt::tournament {
         }
 
         stats.in_game = true;
+        g_is_in_match.store(true);
         stats.game_seconds = frames / 60;
 
         // Locate Player 0 object in RDRAM
@@ -395,7 +505,7 @@ namespace tnt::tournament {
         if (!s.enable_discord || s.discord_webhook.empty()) return;
 
         float lpm = (seconds > 0) ? (static_cast<float>(true_lines) / (static_cast<float>(seconds) / 60.0f)) : 0.0f;
-        uint32_t seed = g_active_seed.load();
+        uint32_t seed = g_match_initial_seed.load();
 
         const char* mode_name = (mode == 0) ? "Marathon" : (mode == 1 ? "Sprint" : "Ultra");
 
