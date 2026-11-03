@@ -11710,6 +11710,7 @@ L_80090A28:
 RECOMP_FUNC void func_80090A44(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
+    tnt_apply_seed_override(rdram, ctx);
     // 0x80090A44: addiu       $sp, $sp, -0x20
     ctx->r29 = ADD32(ctx->r29, -0X20);
     // 0x80090A48: sw          $ra, 0x14($sp)

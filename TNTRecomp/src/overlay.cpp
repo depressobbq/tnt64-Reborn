@@ -198,24 +198,19 @@ namespace {
         std::string title = std::string(tnt::leaderboard::mode_name(p.mode)) + " HIGH SCORES";
         for (auto& c : title) c = char(toupper((unsigned char)c));
         lines.push_back({ std::string((cols - title.size()) / 2, ' ') + title, 1 });
-        lines.push_back({ "", 0 });
-        lines.push_back({ "#  NAME     LINES   TIME", 2 });
+
         std::vector<bool> placed(p.results.size(), false);
-        if (p.table_valid) {
-            for (int e = 0; e < 5; e++) {
-                const auto& t = p.table[e];
-                int color = 0;
-                for (size_t r = 0; r < p.results.size(); r++) {
-                    if (!placed[r] && p.results[r].name == t.name && p.results[r].score == t.score && p.results[r].seconds == t.seconds) {
-                        placed[r] = true; color = 3; break;
-                    }
-                }
-                char rank[4]; snprintf(rank, sizeof(rank), "%d", e + 1);
-                lines.push_back({ row_text(rank, t.name, t.score, t.seconds), color });
-            }
+        for (size_t i = 0; i < std::size(p.table); i++) {
+            const auto& e = p.table[i];
+            int match = -1;
+            for (size_t r = 0; r < p.results.size(); r++)
+                if (!placed[r] && e.score == p.results[r].score && e.seconds == p.results[r].seconds && e.name == p.results[r].name) { match = int(r); break; }
+            char rank[4]; snprintf(rank, sizeof(rank), "%d.", int(i + 1));
+            if (match >= 0) { placed[match] = true; lines.push_back({ row_text(rank, e.name, e.score, e.seconds), 3 }); }
+            else lines.push_back({ row_text(rank, e.name, e.score, e.seconds), 0 });
         }
         bool any_unplaced = false;
-        for (size_t r = 0; r < p.results.size(); r++) if (!placed[r]) any_unplaced = true;
+        for (bool b : placed) if (!b) any_unplaced = true;
         if (any_unplaced) {
             lines.push_back({ "", 0 });
             for (size_t r = 0; r < p.results.size(); r++)
@@ -235,6 +230,83 @@ namespace {
             if (lines[i].text.empty()) continue;
             int c = lines[i].color;
             if (c != last_color) { set_color(w, cimg0, colors[c][0], colors[c][1], colors[c][2]); last_color = c; }
+            text(w, x0 + 8 * s, y0 + 8 * s + int(i) * lh, s, lines[i].text);
+        }
+    }
+
+    // In-game Tournament Options modal dialog (replaces Credits screen)
+    void draw_tournament_options(DlWriter& w, uint32_t cimg0, int width, int height) {
+        auto state = tnt::tournament::get_menu_render_state();
+        const int s = width >= 640 ? 2 : 1;
+        const int cw = 6 * s, lh = 12 * s;
+        const int cols = 33;
+
+        struct Line { std::string text; int color; }; // 0 white, 1 gold, 2 gray, 3 cyan, 4 green
+        std::vector<Line> lines;
+        lines.push_back({ "   TOURNAMENT OPTIONS", 1 });
+        lines.push_back({ "", 0 });
+
+        char buf[64];
+        // Row 0: Seeded Run
+        snprintf(buf, sizeof(buf), "%s SEEDED RUN:      <%s>", state.selected_row == 0 ? ">" : " ", state.seeded_run ? "ENABLED " : "DISABLED");
+        lines.push_back({ buf, state.selected_row == 0 ? 1 : (state.seeded_run ? 4 : 2) });
+
+        // Row 1: Seed Value
+        snprintf(buf, sizeof(buf), "%s SEED:       <0x%08X>", state.selected_row == 1 ? ">" : " ", state.current_seed);
+        lines.push_back({ buf, state.selected_row == 1 ? 1 : 3 });
+
+        // Row 2: Sidebar HUD
+        snprintf(buf, sizeof(buf), "%s SIDEBAR HUD:     <%s>", state.selected_row == 2 ? ">" : " ", state.hud_enabled ? "ON " : "OFF");
+        lines.push_back({ buf, state.selected_row == 2 ? 1 : (state.hud_enabled ? 4 : 2) });
+
+        // Row 3: Discord Share
+        snprintf(buf, sizeof(buf), "%s DISCORD POST:    <%s>", state.selected_row == 3 ? ">" : " ", state.discord_enabled ? "ON " : "OFF");
+        lines.push_back({ buf, state.selected_row == 3 ? 1 : (state.discord_enabled ? 4 : 2) });
+
+        // Row 4: Randomize Seed
+        snprintf(buf, sizeof(buf), "%s RANDOMIZE SEED", state.selected_row == 4 ? ">" : " ");
+        lines.push_back({ buf, state.selected_row == 4 ? 1 : 0 });
+
+        // Row 5: Save & Exit
+        snprintf(buf, sizeof(buf), "%s SAVE & EXIT", state.selected_row == 5 ? ">" : " ");
+        lines.push_back({ buf, state.selected_row == 5 ? 1 : 0 });
+
+        lines.push_back({ "", 0 });
+        lines.push_back({ " D-PAD: SELECT / TWEAK SEED", 2 });
+        lines.push_back({ " A/L/R: TWEAK   B: SAVE & EXIT", 2 });
+
+        int pw = cols * cw + 18 * s, ph = int(lines.size()) * lh + 16 * s;
+        int x0 = (width - pw) / 2, y0 = (height - ph) / 2;
+        if (x0 < 0 || y0 < 0) return;
+
+        set_color(w, cimg0, 222, 170, 60); // border
+        rect(w, x0, y0, x0 + pw - 1, y0 + ph - 1);
+        set_color(w, cimg0, 14, 16, 36);   // background
+        rect(w, x0 + s, y0 + s, x0 + pw - 1 - s, y0 + ph - 1 - s);
+
+        // Highlight selected row (rows 0-5 correspond to lines indices 2-7)
+        int sel_line = 2 + state.selected_row;
+        int hl_y0 = y0 + 8 * s + sel_line * lh - 1 * s;
+        int hl_y1 = hl_y0 + lh - 1 * s;
+        set_color(w, cimg0, 35, 45, 80);
+        rect(w, x0 + 4 * s, hl_y0, x0 + pw - 5 * s, hl_y1);
+
+        const uint8_t colors[5][3] = {
+            { 236, 236, 244 }, // 0: white
+            { 255, 200, 70 },  // 1: gold
+            { 140, 144, 180 }, // 2: gray
+            { 120, 220, 255 }, // 3: cyan
+            { 90, 230, 120 }   // 4: green
+        };
+
+        int last_color = -1;
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (lines[i].text.empty()) continue;
+            int c = lines[i].color;
+            if (c != last_color) {
+                set_color(w, cimg0, colors[c][0], colors[c][1], colors[c][2]);
+                last_color = c;
+            }
             text(w, x0 + 8 * s, y0 + 8 * s + int(i) * lh, s, lines[i].text);
         }
     }
@@ -266,7 +338,7 @@ namespace {
         if (!st.in_game) return;
         const int s = width >= 640 ? 2 : 1;
         int box_w = 95 * s;
-        int box_h = 56 * s;
+        int box_h = 58 * s;
         // Position on the right side over the scorecard
         int x = width - box_w - 6 * s;
         int y = (height >= 480) ? 140 : 70;
@@ -300,75 +372,87 @@ namespace {
         snprintf(buf, sizeof(buf), "BLOCKS: %u", st.blocks_made);
         text(w, x + 4 * s, y + 37 * s, s, buf);
 
-        // Line 4: SEED (if available)
-        if (st.active_seed != 0) {
-            snprintf(buf, sizeof(buf), "SEED:%08X", st.active_seed);
+        // Line 4: SEED (read directly from RDRAM live PRNG state)
+        uint32_t seed_to_show = st.live_seed ? st.live_seed : st.active_seed;
+        if (seed_to_show != 0) {
+            snprintf(buf, sizeof(buf), "SEED:%08X", seed_to_show);
             set_color(w, cimg0, 120, 220, 255);
-            text(w, x + 4 * s, y + 47 * s, s, buf);
+            text(w, x + 4 * s, y + 48 * s, s, buf);
         }
     }
 
 bool tnt_build_overlay(uint8_t* rdram, uint32_t game_dl, uint64_t frame) {
-#if defined(__vita__)
-        // The Vita build has only the FPS counter: no high-score panel or play timer.
-        constexpr bool show_panel = false, show_timer = false;
-        char timer[16] = {};
-        (void)game_timer;
-#else
-        tnt::leaderboard::Panel panel;
-        bool show_panel = tnt::leaderboard::get_panel(panel);
-        char timer[16] = {};
-        bool show_timer = tnt_timer_enabled.load() && game_timer(rdram, frame, timer, sizeof(timer));
-#endif
-        tnt::tournament::LiveStats tourney_stats;
-        bool show_tourney_hud = tnt::settings().tournament_hud;
-        if (show_tourney_hud) tourney_stats = tnt::tournament::get_live_stats(rdram, frame);
-        bool show_fps = tnt_overlay_enabled.load();
-        if (!show_panel && !show_fps && !show_timer && (!show_tourney_hud || !tourney_stats.in_game)) return false;
-        uint32_t cimg0 = 0, cimg1 = 0;
-        if (!find_color_image(rdram, game_dl, cimg0, cimg1)) return false;
-        int width = int(cimg0 & 0xFFF) + 1;
-        int height = width >= 640 ? 480 : 240;
-
-        DlWriter w{ rdram, tnt_overlay_dl_addr, tnt_overlay_dl_addr }; // 64 KB, up to the end of RDRAM
-        w.cmd(0xE7000000u, 0);                                  // G_RDPPIPESYNC
-        w.cmd(cimg0, cimg1);                                    // same colour image as the game
-        w.cmd(0xE3000A01u, 0x00300000u);                        // cycle type: FILL
-        w.cmd(0xE200001Cu, 0);                                  // render mode: none
-        w.cmd(0xED000000u, (uint32_t(width) << 14) | (uint32_t(height) << 2)); // scissor: whole screen
-
-        if (show_fps) {
-            char fps[16], frames[24];
-            snprintf(fps, sizeof(fps), "%.1f", tnt_game_fps.load());
-            snprintf(frames, sizeof(frames), "%llu", (unsigned long long)frame);
-            int text_w = std::max<int>(int(strlen(fps)), int(strlen(frames))) * 7 + 4;
-            int x = 8, y = 8;
-            if (x + text_w < width) {
-                set_color(w, cimg0, 0, 0, 0);                   // backing box
-                rect(w, x - 3, y - 3, x + text_w - 2, y + 23);
-                set_color(w, cimg0, 255, 214, 0);               // yellow: game fps
-                number(w, x, y, fps);
-                set_color(w, cimg0, 255, 255, 255);             // white: frame counter
-                number(w, x, y + 12, frames);
-            }
-        }
-        if (show_timer) {
-            int text_w = 0;
-            for (const char* c = timer; *c; c++) text_w += (*c == ':') ? 3 : 7;
-            int x = width - text_w - 8, y = 8;
-            set_color(w, cimg0, 0, 0, 0);                       // backing box
-            rect(w, x - 3, y - 3, x + text_w, y + 11);
-            set_color(w, cimg0, 120, 220, 255);                 // light blue: play time
-            number(w, x, y, timer);
-        }
 #if !defined(__vita__)
-        if (show_panel) draw_panel(w, cimg0, width, height, panel);
+    tnt_apply_menu_patches(rdram);
+    bool show_options_menu = tnt::tournament::is_options_menu_open();
+#else
+    constexpr bool show_options_menu = false;
 #endif
+
+#if defined(__vita__)
+    // The Vita build has only the FPS counter: no high-score panel or play timer.
+    constexpr bool show_panel = false, show_timer = false;
+    char timer[16] = {};
+    (void)game_timer;
+#else
+    tnt::leaderboard::Panel panel;
+    bool show_panel = tnt::leaderboard::get_panel(panel);
+    char timer[16] = {};
+    bool show_timer = tnt_timer_enabled.load() && game_timer(rdram, frame, timer, sizeof(timer));
+#endif
+    tnt::tournament::LiveStats tourney_stats;
+    bool show_tourney_hud = tnt::settings().tournament_hud;
+    if (show_tourney_hud) tourney_stats = tnt::tournament::get_live_stats(rdram, frame);
+    bool show_fps = tnt_overlay_enabled.load();
+    if (!show_panel && !show_fps && !show_timer && (!show_tourney_hud || !tourney_stats.in_game) && !show_options_menu) return false;
+    uint32_t cimg0 = 0, cimg1 = 0;
+    if (!find_color_image(rdram, game_dl, cimg0, cimg1)) return false;
+    int width = int(cimg0 & 0xFFF) + 1;
+    int height = width >= 640 ? 480 : 240;
+
+    DlWriter w{ rdram, tnt_overlay_dl_addr, tnt_overlay_dl_addr }; // 64 KB, up to the end of RDRAM
+    w.cmd(0xE7000000u, 0);                                  // G_RDPPIPESYNC
+    w.cmd(cimg0, cimg1);                                    // same colour image as the game
+    w.cmd(0xE3000A01u, 0x00300000u);                        // cycle type: FILL
+    w.cmd(0xE200001Cu, 0);                                  // render mode: none
+    w.cmd(0xED000000u, (uint32_t(width) << 14) | (uint32_t(height) << 2)); // scissor: whole screen
+
+    if (show_fps) {
+        char fps[16], frames[24];
+        snprintf(fps, sizeof(fps), "%.1f", tnt_game_fps.load());
+        snprintf(frames, sizeof(frames), "%llu", (unsigned long long)frame);
+        int text_w = std::max<int>(int(strlen(fps)), int(strlen(frames))) * 7 + 4;
+        int x = 8, y = 8;
+        if (x + text_w < width) {
+            set_color(w, cimg0, 0, 0, 0);                   // backing box
+            rect(w, x - 3, y - 3, x + text_w - 2, y + 23);
+            set_color(w, cimg0, 255, 214, 0);               // yellow: game fps
+            number(w, x, y, fps);
+            set_color(w, cimg0, 255, 255, 255);             // white: frame counter
+            number(w, x, y + 12, frames);
+        }
+    }
+    if (show_timer) {
+        int text_w = 0;
+        for (const char* c = timer; *c; c++) text_w += (*c == ':') ? 3 : 7;
+        int x = width - text_w - 8, y = 8;
+        set_color(w, cimg0, 0, 0, 0);                       // backing box
+        rect(w, x - 3, y - 3, x + text_w, y + 11);
+        set_color(w, cimg0, 120, 220, 255);                 // light blue: play time
+        number(w, x, y, timer);
+    }
+#if !defined(__vita__)
+    if (show_options_menu) {
+        draw_tournament_options(w, cimg0, width, height);
+    } else {
+        if (show_panel) draw_panel(w, cimg0, width, height, panel);
         if (show_tourney_hud && tourney_stats.in_game) {
             draw_tournament_hud(w, cimg0, width, height, tourney_stats);
         }
-
-        w.cmd(0xE9000000u, 0);                                  // G_RDPFULLSYNC
-        w.cmd(0xDF000000u, 0);                                  // G_ENDDL
-        return !w.full();
     }
+#endif
+
+    w.cmd(0xE9000000u, 0);                                  // G_RDPFULLSYNC
+    w.cmd(0xDF000000u, 0);                                  // G_ENDDL
+    return !w.full();
+}

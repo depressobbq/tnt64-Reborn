@@ -8080,6 +8080,7 @@ RECOMP_FUNC void func_80083450(uint8_t* rdram, recomp_context* ctx) {
 RECOMP_FUNC void func_80083470(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
+    if (tnt_handle_tournament_options(rdram, ctx)) return;
     // 0x80083470: addiu       $sp, $sp, -0x28
     ctx->r29 = ADD32(ctx->r29, -0X28);
     // 0x80083474: sw          $s0, 0x18($sp)

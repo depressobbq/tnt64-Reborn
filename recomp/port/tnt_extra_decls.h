@@ -19,6 +19,8 @@ void tnt_osContGetQuery(uint8_t* rdram, recomp_context* ctx);   // tnt_cont_fix.
 void tnt_on_game_result(uint8_t* rdram, recomp_context* ctx);   // TNTRecomp/src/leaderboard.cpp (hook)
 void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/tournament.cpp (hook)
 void tnt_on_cube_formed(uint8_t* rdram, recomp_context* ctx);     // TNTRecomp/src/tournament.cpp (hook)
+int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/tournament.cpp (hook)
+void tnt_apply_menu_patches(uint8_t* rdram); // TNTRecomp/src/tournament.cpp
 #ifdef __cplusplus
 }
 #endif
