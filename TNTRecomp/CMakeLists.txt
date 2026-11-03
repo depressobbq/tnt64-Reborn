@@ -74,6 +74,7 @@ add_executable(TNTRecompiled
     src/crash_handler_win.cpp
     src/leaderboard.cpp
     src/settings.cpp
+    src/tournament.cpp
     src/hle_audio.cpp
     src/hle_audio/alist.c
     src/hle_audio/alist_audio.c

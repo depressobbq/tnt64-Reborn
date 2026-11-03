@@ -10,6 +10,8 @@
 #include <vector>
 #if !defined(__vita__)
 #include "leaderboard.hpp"
+#include "tournament.hpp"
+#include "settings.hpp"
 #endif
 
 extern std::atomic<bool> tnt_overlay_enabled;
@@ -259,6 +261,52 @@ namespace {
 }
 
 // Builds the overlay list (FPS counter, play timer and/or after-game panel). Returns false if there's nothing to draw.
+
+    void draw_tournament_hud(DlWriter& w, uint32_t cimg0, int width, int height, const tnt::tournament::LiveStats& st) {
+        if (!st.in_game) return;
+        const int s = width >= 640 ? 2 : 1;
+        int x = 8;
+        int y = height / 3;
+        int box_w = 95 * s;
+        int box_h = 56 * s;
+
+        // Dark background box
+        set_color(w, cimg0, 10, 14, 28);
+        rect(w, x - 2, y - 2, x + box_w, y + box_h);
+
+        // Gold border
+        set_color(w, cimg0, 222, 170, 60);
+        rect(w, x - 2, y - 2, x + box_w, y - 1);
+        rect(w, x - 2, y + box_h - 1, x + box_w, y + box_h);
+        rect(w, x - 2, y - 2, x - 1, y + box_h);
+        rect(w, x + box_w - 1, y - 2, x + box_w, y + box_h);
+
+        // Header: TOURNAMENT
+        set_color(w, cimg0, 255, 200, 70);
+        text(w, x + 4 * s, y + 3 * s, s, "TOURNAMENT");
+
+        // Line 1: TRUE LINES
+        char buf[64];
+        set_color(w, cimg0, 236, 236, 244);
+        snprintf(buf, sizeof(buf), "TRUE L: %u", st.true_lines);
+        text(w, x + 4 * s, y + 15 * s, s, buf);
+
+        // Line 2: LPM
+        snprintf(buf, sizeof(buf), "LPM:    %.1f", st.lpm);
+        text(w, x + 4 * s, y + 26 * s, s, buf);
+
+        // Line 3: BLOCKS / CUBES
+        snprintf(buf, sizeof(buf), "BLOCKS: %u", st.blocks_made);
+        text(w, x + 4 * s, y + 37 * s, s, buf);
+
+        // Line 4: SEED (if available)
+        if (st.active_seed != 0) {
+            snprintf(buf, sizeof(buf), "SEED:%08X", st.active_seed);
+            set_color(w, cimg0, 120, 220, 255);
+            text(w, x + 4 * s, y + 47 * s, s, buf);
+        }
+    }
+
 bool tnt_build_overlay(uint8_t* rdram, uint32_t game_dl, uint64_t frame) {
 #if defined(__vita__)
         // The Vita build has only the FPS counter: no high-score panel or play timer.
@@ -271,8 +319,11 @@ bool tnt_build_overlay(uint8_t* rdram, uint32_t game_dl, uint64_t frame) {
         char timer[16] = {};
         bool show_timer = tnt_timer_enabled.load() && game_timer(rdram, frame, timer, sizeof(timer));
 #endif
+        tnt::tournament::LiveStats tourney_stats;
+        bool show_tourney_hud = tnt::settings().tournament_hud;
+        if (show_tourney_hud) tourney_stats = tnt::tournament::get_live_stats(rdram, frame);
         bool show_fps = tnt_overlay_enabled.load();
-        if (!show_panel && !show_fps && !show_timer) return false;
+        if (!show_panel && !show_fps && !show_timer && (!show_tourney_hud || !tourney_stats.in_game)) return false;
         uint32_t cimg0 = 0, cimg1 = 0;
         if (!find_color_image(rdram, game_dl, cimg0, cimg1)) return false;
         int width = int(cimg0 & 0xFFF) + 1;
@@ -312,6 +363,9 @@ bool tnt_build_overlay(uint8_t* rdram, uint32_t game_dl, uint64_t frame) {
 #if !defined(__vita__)
         if (show_panel) draw_panel(w, cimg0, width, height, panel);
 #endif
+        if (show_tourney_hud && tourney_stats.in_game) {
+            draw_tournament_hud(w, cimg0, width, height, tourney_stats);
+        }
 
         w.cmd(0xE9000000u, 0);                                  // G_RDPFULLSYNC
         w.cmd(0xDF000000u, 0);                                  // G_ENDDL

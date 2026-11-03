@@ -17,6 +17,7 @@
 //     results +0x18 + 4*i  u32 score (the game's "lines": 1 per line, bonus for tetrises and squares)
 //     results +0x28 + 4*i  u32 lines actually cleared
 #include "leaderboard.hpp"
+#include "tournament.hpp"
 namespace tnt { std::filesystem::path data_folder(); } // main.cpp
 #include "recomp.h"
 
@@ -293,6 +294,9 @@ extern "C" void tnt_on_game_result(uint8_t* rdram, recomp_context* ctx) {
     g.seconds = rd32(rdram, results + 0x08 + 4 * idx);
     g.score = rd32(rdram, results + 0x18 + 4 * idx);
     g.lines = rd32(rdram, results + 0x28 + 4 * idx);
+
+    // Tournament Edition: notify match finish (Discord webhook / stats)
+    tnt::tournament::on_match_finish(g.mode, g.name, g.score, g.lines, g.seconds);
 
     std::string msg;
     {

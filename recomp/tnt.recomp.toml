@@ -26,3 +26,8 @@ ignored = [
 [[patches.hook]]
 func = "func_8007875C"
 text = "tnt_on_game_result(rdram, ctx);"
+
+# Tournament Edition (TNTRecomp/src/tournament.cpp): inject seed override on game startup
+[[patches.hook]]
+func = "func_800A3550"
+text = "tnt_apply_seed_override(rdram, ctx);"

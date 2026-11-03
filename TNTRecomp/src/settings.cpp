@@ -92,6 +92,16 @@ const std::vector<tnt::SettingField>& tnt::setting_fields() {
           "How long the panel stays up if no button is pressed." },
         { "launcher", "show_launcher", &S::show_launcher, {}, 0, 0,
           "Reserved: show a settings screen before the game starts (not built yet)." },
+        { "tournament", "tournament_hud", &S::tournament_hud, {}, 0, 0,
+          "Show live True Lines, LPM, and Blocks/Cubes counter on the sidebar during gameplay." },
+        { "tournament", "seeded_run", &S::seeded_run, {}, 0, 0,
+          "Enable fixed seed mode for practice runs, races, or tournaments." },
+        { "tournament", "custom_seed", &S::custom_seed, {}, 0, 0,
+          "32-bit hex (0x37E11D60) or decimal seed to use when seeded_run is enabled." },
+        { "tournament", "enable_discord", &S::enable_discord, {}, 0, 0,
+          "Automatically post match results to your Discord leaderboard channel." },
+        { "tournament", "discord_webhook", &S::discord_webhook, {}, 0, 0,
+          "Discord Webhook URL for match result submissions." },
     };
 #if defined(__vita__)
     // The Vita build only reads these, so only these go in its settings.ini.

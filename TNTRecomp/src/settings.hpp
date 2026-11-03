@@ -57,6 +57,12 @@ namespace tnt {
         int panel_seconds = 30;
         // [launcher]
         bool show_launcher = false;            // reserved for the settings screen
+        // [tournament]
+        bool tournament_hud = true;
+        bool seeded_run = false;
+        std::string custom_seed = "0x00000000";
+        bool enable_discord = false;
+        std::string discord_webhook = "";
     };
 
     struct SettingField {
