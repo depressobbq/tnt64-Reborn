@@ -1,8 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
-
-struct recomp_context;
+#include "recomp.h"
 
 namespace tnt::tournament {
     // Current live game stats (updated in real-time)
@@ -23,4 +22,4 @@ namespace tnt::tournament {
 }
 
 // Hook called when the game initializes the seed (func_800A3550)
-extern "C" void tnt_apply_seed_override(uint8_t* rdram, struct recomp_context* ctx);
+extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx);

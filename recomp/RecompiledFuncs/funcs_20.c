@@ -10388,6 +10388,7 @@ L_800A3598:
     // 0x800A35A4: jr          $ra
     // 0x800A35A8: addiu       $sp, $sp, 0x18
     ctx->r29 = ADD32(ctx->r29, 0X18);
+    tnt_apply_seed_override(rdram, ctx);
     return;
     // 0x800A35A8: addiu       $sp, $sp, 0x18
     ctx->r29 = ADD32(ctx->r29, 0X18);
