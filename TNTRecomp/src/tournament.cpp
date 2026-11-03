@@ -138,6 +138,7 @@ extern "C" void tnt_apply_menu_patches(uint8_t* rdram) {
 
 extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
     if (!rdram) return;
+    (void)ctx;
     const auto& s = tnt::settings();
     uint32_t seed = 0;
 
@@ -162,9 +163,6 @@ extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
             wr32(rdram, FLOAT_SEED_ADDR + (p * 4), f_u32);
         }
 
-        if (ctx) {
-            ctx->r3 = seed;
-        }
         printf("[Tournament Edition] Match Seed Applied: 0x%08X (%u)\n", seed, seed);
     }
 
@@ -180,6 +178,7 @@ extern "C" void tnt_on_cube_formed(uint8_t* rdram, recomp_context* ctx) {
 
 extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx) {
     if (!rdram) return 0;
+    (void)ctx;
 
     // Check active scene byte (0x800CFEE8)
     uint8_t scene = rd8(rdram, SCENE_ADDR);
@@ -188,6 +187,20 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
         return 0; // Not in credits/tournament scene
     }
 
+    // Check credits sub-state (0x800D3330)
+    uint32_t state = rd32(rdram, 0x800D3330);
+    if (state == 0) {
+        // Frame 0 of scene 16: let original initialization run so structures are ready
+        return 0;
+    }
+    if (state == 2) {
+        // Exit / teardown in progress: let original teardown run to cleanly return to scene 4
+        g_options_menu_open.store(false);
+        g_menu_state.initialized = false;
+        return 0;
+    }
+
+    // State 1: In Tournament Options menu
     g_options_menu_open.store(true);
 
     if (!g_menu_state.initialized) {
@@ -272,15 +285,15 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
                 g_menu_state.current_seed = ((uint32_t)rand() << 16) ^ (uint32_t)rand();
             }
             break;
-        case 5: // Save & Exit
+        case 5: // Save & Return
             if (pressed & (0x8000 | 0x1000)) {
                 exit_menu = true;
             }
             break;
     }
 
-    // B button exits and saves
-    if (pressed & 0x4000) {
+    // B button or Start exits and saves
+    if (pressed & (0x4000 | 0x1000)) {
         exit_menu = true;
     }
 
@@ -297,15 +310,15 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
         printf("[Tournament Options] Saved settings: Seeded=%d Seed=%s HUD=%d Discord=%d\n",
                s.seeded_run, s.custom_seed.c_str(), s.tournament_hud, s.enable_discord);
 
-        // Transition back to Options Menu (scene 4)
-        wr8(rdram, SCENE_ADDR, 4);
-        wr8(rdram, (0x800D0000 - 0x2B8), 1);
-        wr32(rdram, 0x800D3330, 0);
         g_options_menu_open.store(false);
         g_menu_state.initialized = false;
+
+        // Transition back to Options Menu by triggering the game's native Scene 16 teardown (sub-state 2)
+        wr32(rdram, 0x800D3330, 2);
+        return 0; // Return 0 so func_80083470 executes L_80083504 and transitions back cleanly to Scene 4!
     }
 
-    return 1; // Suppress original credits
+    return 1; // Suppress original credits scrolling and drawing
 }
 
 namespace tnt::tournament {

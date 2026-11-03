@@ -267,13 +267,13 @@ namespace {
         snprintf(buf, sizeof(buf), "%s RANDOMIZE SEED", state.selected_row == 4 ? ">" : " ");
         lines.push_back({ buf, state.selected_row == 4 ? 1 : 0 });
 
-        // Row 5: Save & Exit
-        snprintf(buf, sizeof(buf), "%s SAVE & EXIT", state.selected_row == 5 ? ">" : " ");
+        // Row 5: Save & Return
+        snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 5 ? ">" : " ");
         lines.push_back({ buf, state.selected_row == 5 ? 1 : 0 });
 
         lines.push_back({ "", 0 });
         lines.push_back({ " D-PAD: SELECT / TWEAK SEED", 2 });
-        lines.push_back({ " A/L/R: TWEAK   B: SAVE & EXIT", 2 });
+        lines.push_back({ " A/L/R: TWEAK   B: SAVE & RETURN", 2 });
 
         int pw = cols * cw + 18 * s, ph = int(lines.size()) * lh + 16 * s;
         int x0 = (width - pw) / 2, y0 = (height - ph) / 2;
