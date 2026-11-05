@@ -9601,7 +9601,7 @@ L_8008FD44:
     // 0x8008FD5C: nop
 
     // 0x8008FD60: addiu       $t7, $zero, 0xF
-    ctx->r15 = ADD32(0, 0XF);
+    ctx->r15 = ADD32(0, 0X10);
     // 0x8008FD64: b           L_8008FD88
     // 0x8008FD68: sb          $t7, 0x36($sp)
     MEM_B(0X36, ctx->r29) = ctx->r15;
@@ -9633,7 +9633,7 @@ L_8008FD88:
     // 0x8008FD94: addu        $t9, $t9, $t1
     ctx->r25 = ADD32(ctx->r25, ctx->r9);
     // 0x8008FD98: lw          $t9, 0x3D48($t9)
-    ctx->r25 = MEM_W(ctx->r25, 0X3D48);
+    ctx->r25 = tnt_get_track_name_ptr(rdram, ctx->r25, ctx->r24);
     // 0x8008FD9C: sb          $zero, 0x37($sp)
     MEM_B(0X37, ctx->r29) = 0;
     // 0x8008FDA0: lbu         $t4, 0x0($t9)
@@ -9660,7 +9660,7 @@ L_8008FDB0:
     // 0x8008FDC0: addu        $t7, $t7, $t5
     ctx->r15 = ADD32(ctx->r15, ctx->r13);
     // 0x8008FDC4: lw          $t7, 0x3D48($t7)
-    ctx->r15 = MEM_W(ctx->r15, 0X3D48);
+    ctx->r15 = tnt_get_track_name_ptr(rdram, ctx->r15, ctx->r11);
     // 0x8008FDC8: lbu         $t0, 0x37($sp)
     ctx->r8 = MEM_BU(ctx->r29, 0X37);
     // 0x8008FDCC: lbu         $t8, 0x37($sp)
@@ -9674,7 +9674,7 @@ L_8008FDB0:
     // 0x8008FDDC: addu        $t6, $t7, $t0
     ctx->r14 = ADD32(ctx->r15, ctx->r8);
     // 0x8008FDE0: lw          $t3, 0x3D48($t3)
-    ctx->r11 = MEM_W(ctx->r11, 0X3D48);
+    ctx->r11 = tnt_get_track_name_ptr(rdram, ctx->r11, ctx->r25);
     // 0x8008FDE4: lbu         $t2, 0x0($t6)
     ctx->r10 = MEM_BU(ctx->r14, 0X0);
     // 0x8008FDE8: lui         $at, 0x800D
@@ -16105,15 +16105,14 @@ L_80092464:
     // 0x800924C0: addiu       $at, $zero, 0x30
     ctx->r1 = ADD32(0, 0X30);
     // 0x800924C4: bne         $t3, $at, L_800924D8
-    if (ctx->r11 != ctx->r1) {
-        // 0x800924C8: nop
-    
-            goto L_800924D8;
+    // Always unlock all tracks including CUSTOM (17 tracks total: 0..16)
+    if (0) {
+        goto L_800924D8;
     }
     // 0x800924C8: nop
 
     // 0x800924CC: addiu       $t7, $zero, 0xF
-    ctx->r15 = ADD32(0, 0XF);
+    ctx->r15 = ADD32(0, 0X11);
     // 0x800924D0: b           L_800924F4
     // 0x800924D4: sw          $t7, 0x1C4($sp)
     MEM_W(0X1C4, ctx->r29) = ctx->r15;
@@ -16166,7 +16165,7 @@ L_80092504:
     // 0x80092518: addu        $t8, $t8, $t5
     ctx->r24 = ADD32(ctx->r24, ctx->r13);
     // 0x8009251C: lw          $t8, 0x3D48($t8)
-    ctx->r24 = MEM_W(ctx->r24, 0X3D48);
+    ctx->r24 = tnt_get_track_name_ptr(rdram, ctx->r24, ctx->r10);
     // 0x80092520: sw          $v0, 0x1C0($sp)
     MEM_W(0X1C0, ctx->r29) = ctx->r2;
     // 0x80092524: sw          $zero, 0x1C8($sp)
@@ -16193,7 +16192,7 @@ L_80092538:
     // 0x80092544: addu        $t6, $t6, $t7
     ctx->r14 = ADD32(ctx->r14, ctx->r15);
     // 0x80092548: lw          $t6, 0x3D48($t6)
-    ctx->r14 = MEM_W(ctx->r14, 0X3D48);
+    ctx->r14 = tnt_get_track_name_ptr(rdram, ctx->r14, ctx->r11);
     // 0x8009254C: lw          $t1, 0x1C8($sp)
     ctx->r9 = MEM_W(ctx->r29, 0X1C8);
     // 0x80092550: lw          $t2, 0x1C0($sp)
@@ -16217,7 +16216,7 @@ L_80092538:
     // 0x80092574: addu        $t6, $t6, $t7
     ctx->r14 = ADD32(ctx->r14, ctx->r15);
     // 0x80092578: lw          $t6, 0x3D48($t6)
-    ctx->r14 = MEM_W(ctx->r14, 0X3D48);
+    ctx->r14 = tnt_get_track_name_ptr(rdram, ctx->r14, ctx->r11);
     // 0x8009257C: addiu       $t0, $t8, 0x1
     ctx->r8 = ADD32(ctx->r24, 0X1);
     // 0x80092580: sw          $t0, 0x1C8($sp)

@@ -8184,6 +8184,7 @@ L_8003E028:
 RECOMP_FUNC void func_8003E038(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
+    tnt_on_match_piece_init(rdram, ctx);
     // 0x8003E038: addiu       $sp, $sp, -0x38
     ctx->r29 = ADD32(ctx->r29, -0X38);
     // 0x8003E03C: sw          $a0, 0x38($sp)

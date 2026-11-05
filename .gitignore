@@ -16,3 +16,7 @@ runtime/N64ModernRuntime-vita/
 build_log.txt
 run_log.txt
 settings.ini
+
+# Music audio files (folders and READMEs are tracked)
+*.mp3
+*.wav

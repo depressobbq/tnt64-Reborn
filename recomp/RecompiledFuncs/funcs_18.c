@@ -1518,6 +1518,12 @@ L_80084E74:
     // 0x80084E9C: sb          $zero, 0x1598($t4)
     MEM_B(0X1598, ctx->r12) = 0;
     after_2:
+    if (MEM_BU(ctx->r29, 0X2B) == 1) {
+        ctx->r4 = MEM_W(ctx->r29, 0X20);
+        if (tnt_on_play_music(rdram, ctx)) {
+            goto L_80084F70;
+        }
+    }
     // 0x80084EA0: lui         $t5, 0x800E
     ctx->r13 = S32(0X800E << 16);
     // 0x80084EA4: lhu         $t5, 0x20B0($t5)
@@ -7576,6 +7582,7 @@ RECOMP_FUNC void func_800875E4(uint8_t* rdram, recomp_context* ctx) {
 RECOMP_FUNC void func_800875EC(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
+    tnt_on_set_music_volume(ctx->r4);
     // 0x800875EC: andi        $a0, $a0, 0xFFFF
     ctx->r4 = ctx->r4 & 0XFFFF;
     // 0x800875F0: addiu       $t6, $zero, 0x1
@@ -7885,6 +7892,9 @@ RECOMP_FUNC void func_8008777C(uint8_t* rdram, recomp_context* ctx) {
 RECOMP_FUNC void func_80087784(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
+    if (tnt_is_custom_music_playing()) {
+        return;
+    }
     // 0x80087784: addiu       $sp, $sp, -0x20
     ctx->r29 = ADD32(ctx->r29, -0X20);
     // 0x80087788: sw          $a0, 0x20($sp)

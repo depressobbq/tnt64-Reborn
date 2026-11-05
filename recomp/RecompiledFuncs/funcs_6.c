@@ -5491,39 +5491,13 @@ L_80061B68:
     // 0x80061BB0: sw          $t4, 0x1C($sp)
     MEM_W(0X1C, ctx->r29) = ctx->r12;
 L_80061BB4:
-    // 0x80061BB4: lw          $a1, 0x20($sp)
-    ctx->r5 = MEM_W(ctx->r29, 0X20);
-    // 0x80061BB8: addiu       $a0, $zero, 0x1
-    ctx->r4 = ADD32(0, 0X1);
-    // 0x80061BBC: jal         0x800A35EC
-    // 0x80061BC0: addiu       $a1, $a1, 0x9
-    ctx->r5 = ADD32(ctx->r5, 0X9);
-    func_800A35EC(rdram, ctx);
-        goto after_1;
-    // 0x80061BC0: addiu       $a1, $a1, 0x9
-    ctx->r5 = ADD32(ctx->r5, 0X9);
-    after_1:
-    // 0x80061BC4: b           L_80061BE0
-    // 0x80061BC8: sw          $v0, 0x1C($sp)
+    ctx->r2 = tnt_on_pick_random_bgm(rdram);
     MEM_W(0X1C, ctx->r29) = ctx->r2;
-        goto L_80061BE0;
-    // 0x80061BC8: sw          $v0, 0x1C($sp)
-    MEM_W(0X1C, ctx->r29) = ctx->r2;
+    goto L_80061BE0;
 L_80061BCC:
-    // 0x80061BCC: lw          $a1, 0x20($sp)
-    ctx->r5 = MEM_W(ctx->r29, 0X20);
-    // 0x80061BD0: addiu       $a0, $zero, 0x1
-    ctx->r4 = ADD32(0, 0X1);
-    // 0x80061BD4: jal         0x800A35EC
-    // 0x80061BD8: addiu       $a1, $a1, 0x9
-    ctx->r5 = ADD32(ctx->r5, 0X9);
-    func_800A35EC(rdram, ctx);
-        goto after_2;
-    // 0x80061BD8: addiu       $a1, $a1, 0x9
-    ctx->r5 = ADD32(ctx->r5, 0X9);
-    after_2:
-    // 0x80061BDC: sw          $v0, 0x1C($sp)
+    ctx->r2 = tnt_on_pick_random_bgm(rdram);
     MEM_W(0X1C, ctx->r29) = ctx->r2;
+    goto L_80061BE0;
 L_80061BE0:
     // 0x80061BE0: lui         $t5, 0x800D
     ctx->r13 = S32(0X800D << 16);
@@ -5629,7 +5603,7 @@ L_80061C5C:
     // 0x80061C60: nop
 
     // 0x80061C64: slti        $at, $t8, 0x10
-    ctx->r1 = SIGNED(ctx->r24) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r24) < 0X12 ? 1 : 0;
     // 0x80061C68: beq         $at, $zero, L_80061FBC
     if (ctx->r1 == 0) {
         // 0x80061C6C: nop
@@ -5717,7 +5691,7 @@ L_80061CD0:
     // 0x80061CD4: nop
 
     // 0x80061CD8: slti        $at, $t0, 0x10
-    ctx->r1 = SIGNED(ctx->r8) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r8) < 0X12 ? 1 : 0;
     // 0x80061CDC: beq         $at, $zero, L_80061FBC
     if (ctx->r1 == 0) {
         // 0x80061CE0: nop
@@ -5805,7 +5779,7 @@ L_80061D44:
     // 0x80061D48: nop
 
     // 0x80061D4C: slti        $at, $t2, 0x10
-    ctx->r1 = SIGNED(ctx->r10) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r10) < 0X12 ? 1 : 0;
     // 0x80061D50: beq         $at, $zero, L_80061FBC
     if (ctx->r1 == 0) {
         // 0x80061D54: nop
@@ -5893,7 +5867,7 @@ L_80061DB8:
     // 0x80061DBC: nop
 
     // 0x80061DC0: slti        $at, $t4, 0x10
-    ctx->r1 = SIGNED(ctx->r12) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r12) < 0X12 ? 1 : 0;
     // 0x80061DC4: beq         $at, $zero, L_80061FBC
     if (ctx->r1 == 0) {
         // 0x80061DC8: nop
@@ -5981,7 +5955,7 @@ L_80061E2C:
     // 0x80061E30: nop
 
     // 0x80061E34: slti        $at, $t6, 0x10
-    ctx->r1 = SIGNED(ctx->r14) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r14) < 0X12 ? 1 : 0;
     // 0x80061E38: beq         $at, $zero, L_80061FBC
     if (ctx->r1 == 0) {
         // 0x80061E3C: nop
@@ -6069,7 +6043,7 @@ L_80061EA0:
     // 0x80061EA4: nop
 
     // 0x80061EA8: slti        $at, $t8, 0x10
-    ctx->r1 = SIGNED(ctx->r24) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r24) < 0X12 ? 1 : 0;
     // 0x80061EAC: beq         $at, $zero, L_80061FBC
     if (ctx->r1 == 0) {
         // 0x80061EB0: nop
@@ -6157,7 +6131,7 @@ L_80061F14:
     // 0x80061F18: nop
 
     // 0x80061F1C: slti        $at, $t0, 0x10
-    ctx->r1 = SIGNED(ctx->r8) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r8) < 0X12 ? 1 : 0;
     // 0x80061F20: beq         $at, $zero, L_80061FBC
     if (ctx->r1 == 0) {
         // 0x80061F24: nop
@@ -6245,7 +6219,7 @@ L_80061F88:
     // 0x80061F8C: nop
 
     // 0x80061F90: slti        $at, $t2, 0x10
-    ctx->r1 = SIGNED(ctx->r10) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r10) < 0X12 ? 1 : 0;
     // 0x80061F94: beq         $at, $zero, L_80061FBC
     if (ctx->r1 == 0) {
         // 0x80061F98: nop
@@ -6383,7 +6357,7 @@ L_80062038:
     // 0x8006203C: nop
 
     // 0x80062040: slti        $at, $t6, 0x10
-    ctx->r1 = SIGNED(ctx->r14) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r14) < 0X12 ? 1 : 0;
     // 0x80062044: beq         $at, $zero, L_80062398
     if (ctx->r1 == 0) {
         // 0x80062048: nop
@@ -6471,7 +6445,7 @@ L_800620AC:
     // 0x800620B0: nop
 
     // 0x800620B4: slti        $at, $t8, 0x10
-    ctx->r1 = SIGNED(ctx->r24) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r24) < 0X12 ? 1 : 0;
     // 0x800620B8: beq         $at, $zero, L_80062398
     if (ctx->r1 == 0) {
         // 0x800620BC: nop
@@ -6559,7 +6533,7 @@ L_80062120:
     // 0x80062124: nop
 
     // 0x80062128: slti        $at, $t0, 0x10
-    ctx->r1 = SIGNED(ctx->r8) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r8) < 0X12 ? 1 : 0;
     // 0x8006212C: beq         $at, $zero, L_80062398
     if (ctx->r1 == 0) {
         // 0x80062130: nop
@@ -6647,7 +6621,7 @@ L_80062194:
     // 0x80062198: nop
 
     // 0x8006219C: slti        $at, $t2, 0x10
-    ctx->r1 = SIGNED(ctx->r10) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r10) < 0X12 ? 1 : 0;
     // 0x800621A0: beq         $at, $zero, L_80062398
     if (ctx->r1 == 0) {
         // 0x800621A4: nop
@@ -6735,7 +6709,7 @@ L_80062208:
     // 0x8006220C: nop
 
     // 0x80062210: slti        $at, $t4, 0x10
-    ctx->r1 = SIGNED(ctx->r12) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r12) < 0X12 ? 1 : 0;
     // 0x80062214: beq         $at, $zero, L_80062398
     if (ctx->r1 == 0) {
         // 0x80062218: nop
@@ -6823,7 +6797,7 @@ L_8006227C:
     // 0x80062280: nop
 
     // 0x80062284: slti        $at, $t6, 0x10
-    ctx->r1 = SIGNED(ctx->r14) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r14) < 0X12 ? 1 : 0;
     // 0x80062288: beq         $at, $zero, L_80062398
     if (ctx->r1 == 0) {
         // 0x8006228C: nop
@@ -6911,7 +6885,7 @@ L_800622F0:
     // 0x800622F4: nop
 
     // 0x800622F8: slti        $at, $t8, 0x10
-    ctx->r1 = SIGNED(ctx->r24) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r24) < 0X12 ? 1 : 0;
     // 0x800622FC: beq         $at, $zero, L_80062398
     if (ctx->r1 == 0) {
         // 0x80062300: nop
@@ -6999,7 +6973,7 @@ L_80062364:
     // 0x80062368: nop
 
     // 0x8006236C: slti        $at, $t0, 0x10
-    ctx->r1 = SIGNED(ctx->r8) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r8) < 0X12 ? 1 : 0;
     // 0x80062370: beq         $at, $zero, L_80062398
     if (ctx->r1 == 0) {
         // 0x80062374: nop
@@ -7139,7 +7113,7 @@ L_80062418:
     // 0x8006241C: nop
 
     // 0x80062420: slti        $at, $t4, 0x10
-    ctx->r1 = SIGNED(ctx->r12) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r12) < 0X12 ? 1 : 0;
     // 0x80062424: beq         $at, $zero, L_80062778
     if (ctx->r1 == 0) {
         // 0x80062428: nop
@@ -7227,7 +7201,7 @@ L_8006248C:
     // 0x80062490: nop
 
     // 0x80062494: slti        $at, $t6, 0x10
-    ctx->r1 = SIGNED(ctx->r14) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r14) < 0X12 ? 1 : 0;
     // 0x80062498: beq         $at, $zero, L_80062778
     if (ctx->r1 == 0) {
         // 0x8006249C: nop
@@ -7315,7 +7289,7 @@ L_80062500:
     // 0x80062504: nop
 
     // 0x80062508: slti        $at, $t8, 0x10
-    ctx->r1 = SIGNED(ctx->r24) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r24) < 0X12 ? 1 : 0;
     // 0x8006250C: beq         $at, $zero, L_80062778
     if (ctx->r1 == 0) {
         // 0x80062510: nop
@@ -7403,7 +7377,7 @@ L_80062574:
     // 0x80062578: nop
 
     // 0x8006257C: slti        $at, $t0, 0x10
-    ctx->r1 = SIGNED(ctx->r8) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r8) < 0X12 ? 1 : 0;
     // 0x80062580: beq         $at, $zero, L_80062778
     if (ctx->r1 == 0) {
         // 0x80062584: nop
@@ -7491,7 +7465,7 @@ L_800625E8:
     // 0x800625EC: nop
 
     // 0x800625F0: slti        $at, $t2, 0x10
-    ctx->r1 = SIGNED(ctx->r10) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r10) < 0X12 ? 1 : 0;
     // 0x800625F4: beq         $at, $zero, L_80062778
     if (ctx->r1 == 0) {
         // 0x800625F8: nop
@@ -7579,7 +7553,7 @@ L_8006265C:
     // 0x80062660: nop
 
     // 0x80062664: slti        $at, $t4, 0x10
-    ctx->r1 = SIGNED(ctx->r12) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r12) < 0X12 ? 1 : 0;
     // 0x80062668: beq         $at, $zero, L_80062778
     if (ctx->r1 == 0) {
         // 0x8006266C: nop
@@ -7667,7 +7641,7 @@ L_800626D0:
     // 0x800626D4: nop
 
     // 0x800626D8: slti        $at, $t6, 0x10
-    ctx->r1 = SIGNED(ctx->r14) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r14) < 0X12 ? 1 : 0;
     // 0x800626DC: beq         $at, $zero, L_80062778
     if (ctx->r1 == 0) {
         // 0x800626E0: nop
@@ -7755,7 +7729,7 @@ L_80062744:
     // 0x80062748: nop
 
     // 0x8006274C: slti        $at, $t8, 0x10
-    ctx->r1 = SIGNED(ctx->r24) < 0X10 ? 1 : 0;
+    ctx->r1 = SIGNED(ctx->r24) < 0X12 ? 1 : 0;
     // 0x80062750: beq         $at, $zero, L_80062778
     if (ctx->r1 == 0) {
         // 0x80062754: nop

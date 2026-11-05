@@ -75,6 +75,7 @@ add_executable(TNTRecompiled
     src/leaderboard.cpp
     src/settings.cpp
     src/tournament.cpp
+    src/custom_audio.cpp
     src/hle_audio.cpp
     src/hle_audio/alist.c
     src/hle_audio/alist_audio.c

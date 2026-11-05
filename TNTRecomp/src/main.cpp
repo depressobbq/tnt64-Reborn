@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include "custom_audio.hpp"
 #include <vector>
 #include "tnt_game.hpp"
 #include "settings.hpp"
@@ -107,6 +108,7 @@ int main(int argc, char** argv) {
     std::filesystem::create_directories(tnt::data_folder(), ec);
     recomp::register_config_path(tnt::data_folder());
     tnt::init_settings();
+    tnt::audio::init_custom_audio();
 
     recomp::GameEntry tnt_entry{
         .rom_hash = 0xEDDC4D3AEF798119ULL,   // XXH3-64 of the USA z64 ROM
@@ -174,5 +176,6 @@ int main(int argc, char** argv) {
     cfg.threads_callbacks = { .get_game_thread_name = get_game_thread_name };
 
     recomp::start(cfg);
+    tnt::audio::shutdown_custom_audio();
     return EXIT_SUCCESS;
 }

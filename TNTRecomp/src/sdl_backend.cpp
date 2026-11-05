@@ -1,3 +1,4 @@
+#include "custom_audio.hpp"
 // SDL2 + RT64 backend: window, audio output, keyboard/gamepad input, message boxes.
 //
 // Default controls (N64 pad):
@@ -363,6 +364,7 @@ namespace {
         while (SDL_PollEvent(&e)) {
             switch (e.type) {
                 case SDL_QUIT:
+                    tnt::audio::shutdown_custom_audio();
                     ultramodern::quit();
                     break;
                 case SDL_CONTROLLERBUTTONDOWN:
@@ -370,7 +372,10 @@ namespace {
                     break;
                 case SDL_KEYDOWN:
                     if (!e.key.repeat && (e.key.keysym.scancode < SDL_SCANCODE_F1 || e.key.keysym.scancode > SDL_SCANCODE_F12)) tnt::leaderboard::on_button();
-                    if (e.key.keysym.scancode == SDL_SCANCODE_ESCAPE && escape_quits) ultramodern::quit();
+                    if (e.key.keysym.scancode == SDL_SCANCODE_ESCAPE && escape_quits) {
+                        tnt::audio::shutdown_custom_audio();
+                        ultramodern::quit();
+                    }
                     if (e.key.keysym.scancode == SDL_SCANCODE_F11 && !e.key.repeat) toggle_fullscreen();
                     if (e.key.keysym.scancode == SDL_SCANCODE_F3 && !e.key.repeat) tnt_overlay_enabled = !tnt_overlay_enabled;
                     if (e.key.keysym.scancode == SDL_SCANCODE_F4 && !e.key.repeat) open_leaderboard();

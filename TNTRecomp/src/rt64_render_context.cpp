@@ -124,6 +124,8 @@ static void apply_user_config(RT64::Application* app, const ultramodern::rendere
     app->userConfig.refreshRateTarget = config.rr_manual_value;
     app->userConfig.internalColorFormat = to_rt64(config.hpfb_option);
     app->userConfig.displayBuffering = RT64::UserConfiguration::DisplayBuffering::Triple;
+    // N64 hardware-accurate 3-point triangular filtering prevents sampling past texture boundaries into TMEM
+    app->userConfig.threePointFiltering = true;
 }
 
 static ultramodern::renderer::SetupResult map_setup_result(RT64::Application::SetupResult r) {
@@ -206,6 +208,10 @@ namespace tnt {
                 default: app->userConfig.graphicsAPI = RT64::UserConfiguration::GraphicsAPI::Automatic; break;
             }
 
+            // S2DEX & Rect enhancements to eliminate bilinear seam artifacts on background & playfield edges
+            app->enhancementConfig.s2dex.fixBilerpMismatch = true;
+            app->enhancementConfig.rect.fixRectLR = true;
+
             uint32_t thread_id = 0;
 #ifdef _WIN32
             thread_id = window_handle.thread_id;
@@ -238,6 +244,8 @@ namespace tnt {
 
         void enable_instant_present() override {
             app->enhancementConfig.presentation.mode = RT64::EnhancementConfiguration::Presentation::Mode::PresentEarly;
+            app->enhancementConfig.s2dex.fixBilerpMismatch = true;
+            app->enhancementConfig.rect.fixRectLR = true;
             app->updateEnhancementConfig();
         }
 

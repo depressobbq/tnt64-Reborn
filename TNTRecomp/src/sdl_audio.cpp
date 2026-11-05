@@ -7,6 +7,7 @@
 //  - old:    the first version: SDL_AudioCVT per buffer (stateless) and drops whole
 //    buffers above 150 ms queued. Kept to reproduce/compare.
 #include "sdl_audio.hpp"
+#include "custom_audio.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
@@ -110,6 +111,7 @@ void tnt::audio::queue_samples(int16_t* data, size_t count) {
         if (queued_ms_locked() > 500.0) { buffers_dropped++; return; }
         if (got > 0) {
             apply_volume(reinterpret_cast<float*>(out.data()), (size_t)got / sizeof(float));
+            tnt::audio::mix_custom_samples(reinterpret_cast<float*>(out.data()), (size_t)got / (sizeof(float) * 2));
             SDL_QueueAudio(device, out.data(), got);
         }
     } else {
@@ -126,6 +128,7 @@ void tnt::audio::queue_samples(int16_t* data, size_t count) {
         int out_bytes = cvt.needed ? cvt.len_cvt : cvt.len;
         if (queued_ms_locked() > 150.0) { buffers_dropped++; return; }
         apply_volume(buf.data(), (size_t)out_bytes / sizeof(float));
+        tnt::audio::mix_custom_samples(buf.data(), (size_t)out_bytes / (sizeof(float) * 2));
         SDL_QueueAudio(device, buf.data(), out_bytes);
     }
 }

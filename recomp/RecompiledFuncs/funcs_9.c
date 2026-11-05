@@ -4,6 +4,7 @@
 RECOMP_FUNC void func_800696F4(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
+    tnt_on_line_cleared(rdram, ctx);
     // 0x800696F4: addiu       $sp, $sp, -0x28
     ctx->r29 = ADD32(ctx->r29, -0X28);
     // 0x800696F8: sw          $a0, 0x28($sp)

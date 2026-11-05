@@ -8232,7 +8232,7 @@ L_80083504:
     ctx->r4 = ADD32(ctx->r4, 0X53C8);
     after_6:
     // 0x8008352C: addiu       $t8, $zero, 0x4
-    ctx->r24 = tnt_get_scene16_exit_scene();
+    ctx->r24 = ADD32(0, 0X4);
     // 0x80083530: lui         $at, 0x800D
     ctx->r1 = S32(0X800D << 16);
     // 0x80083534: sb          $t8, -0x118($at)
