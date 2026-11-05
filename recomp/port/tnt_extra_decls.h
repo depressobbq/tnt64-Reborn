@@ -16,18 +16,18 @@ void osGbpakReadWrite(uint8_t* rdram, recomp_context* ctx);
 void osPfsRepairId_recomp(uint8_t* rdram, recomp_context* ctx); // N64ModernRuntime librecomp/src/pak.cpp
 void tnt_osContInit(uint8_t* rdram, recomp_context* ctx);       // tnt_cont_fix.c
 void tnt_osContGetQuery(uint8_t* rdram, recomp_context* ctx);   // tnt_cont_fix.c
-void tnt_on_game_result(uint8_t* rdram, recomp_context* ctx);   // TNTRecomp/src/leaderboard.cpp (hook)
-void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/tournament.cpp (hook)
-void tnt_on_cube_formed(uint8_t* rdram, recomp_context* ctx);     // TNTRecomp/src/tournament.cpp (hook)
-void tnt_on_line_cleared(uint8_t* rdram, recomp_context* ctx);    // TNTRecomp/src/tournament.cpp (hook)
-int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/tournament.cpp (hook)
+void tnt_on_game_result(uint8_t* rdram, recomp_context* ctx);   // TNTRecomp/src/leaderboard.cpp
+void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/tournament.cpp
+void tnt_on_cube_formed(uint8_t* rdram, recomp_context* ctx);     // TNTRecomp/src/tournament.cpp
+void tnt_on_line_cleared(uint8_t* rdram, recomp_context* ctx);    // TNTRecomp/src/tournament.cpp
+int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/tournament.cpp
 void tnt_apply_menu_patches(uint8_t* rdram); // TNTRecomp/src/tournament.cpp
 
-// Custom audio hooks
-int tnt_on_play_music(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/custom_audio.cpp (hook)
-int tnt_is_custom_music_playing(void);                       // TNTRecomp/src/custom_audio.cpp (hook)
-void tnt_on_set_music_volume(uint32_t vol);                  // TNTRecomp/src/custom_audio.cpp (hook)
-int tnt_on_pick_random_bgm(uint8_t* rdram);                  // TNTRecomp/src/custom_audio.cpp (hook)
+// Custom audio functions
+int tnt_on_play_music(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/custom_audio.cpp
+int tnt_is_custom_music_playing(void);                       // TNTRecomp/src/custom_audio.cpp
+void tnt_on_set_music_volume(uint32_t vol);                  // TNTRecomp/src/custom_audio.cpp
+int tnt_on_pick_random_bgm(uint8_t* rdram);                  // TNTRecomp/src/custom_audio.cpp
 
 static inline gpr tnt_get_track_name_ptr(uint8_t* rdram, gpr reg, gpr track_idx) {
     if ((uint32_t)track_idx >= 16) {

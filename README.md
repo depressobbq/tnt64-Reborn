@@ -1,54 +1,53 @@
-# The New Tetris: Reborn (TNT Reborn)
+# The New Tetris: Reborn
 
-[![Platform: Linux & Windows](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-blue.svg)](https://github.com/depressobbq/tnt64-Tournament-Edition)
+[![Platform: Linux & Windows](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-blue.svg)](https://github.com/depressobbq/tnt64-Reborn)
 [![Engine: N64Recomp + RT64](https://img.shields.io/badge/Engine-N64Recomp%20%2B%20RT64-green.svg)](https://github.com/Mr-Wiseguy/N64Recomp)
 [![Audio: Hi--Fi MP3 / WAV](https://img.shields.io/badge/Audio-CD--Quality%20Streaming-orange.svg)]()
-[![Status: Active Development](https://img.shields.io/badge/Status-Active%20Remaster-brightgreen.svg)]()
+[![Status: Active Development](https://img.shields.io/badge/Status-Active-brightgreen.svg)]()
 
-*The New Tetris: Reborn* is an enhanced, feature-rich modern remaster and competitive fork of the *The New Tetris* (N64, USA) native PC recompilation.
+*The New Tetris: Reborn* is an enhanced native PC port of *The New Tetris* (N64).
 
-Reborn preserves 100% of the authentic physics, rotation system, and piece-spawning algorithms of the original 1999 masterpiece while introducing CD-quality live soundtrack streaming, custom music rotation, deterministic tournament-grade RNG seeding, an expanded competitive live HUD, and automated Discord score broadcasting.
+It preserves authentic physics, rotation rules, and piece generation while adding support for high-fidelity soundtrack streaming, custom music playlists, deterministic tournament seed overrides, an expanded live HUD, and automated Discord match logging.
 
 ---
 
 ## Key Features
 
-### 🎵 High-Fidelity Audio Engine & Custom Soundtrack
-- **Live CD-Quality Soundtrack:** Automatically detects and plays live studio tracks (`.mp3` and `.wav`) placed in the `soundtrack/` folder, replacing compressed N64 sequences with full dynamic range.
-- **Custom Music Directory:** Dedicated `custom_tracks/` directory seamlessly integrated into the in-game Audio Menu as **`CUSTOM.`**.
-- **Continuous Seamless Rotation:** In Random music mode, a dedicated background preloader thread (`preload_worker`) decodes and resamples the next upcoming track ahead of time, ensuring hitch-free, continuous music rotation across matches.
-- **Smooth Audio Mixing:** Hardware-accurate software mixing with zero audio dropouts, underruns, or clicks.
+### 🎵 High-Fidelity Audio & Custom Soundtracks
+- **CD-Quality Soundtrack:** Plays full-fidelity audio (`.mp3` and `.wav`) placed in `soundtrack/`, replacing compressed original sequences with uncompressed dynamic range.
+- **Custom Music Directory:** Load custom `.mp3` or `.wav` files from `custom_tracks/`, accessible in the Audio Menu as **`CUSTOM.`**.
+- **Continuous Rotation:** In Random music mode, upcoming tracks are asynchronously decoded and prepared ahead of time for uninterrupted playback between matches.
+- **Accurate Mixing:** Integrated software mixing matching original game volume levels with no dropouts or clicks.
 
 ### 🏆 Tournament Mode & Deterministic RNG
-- **In-Game Tournament Menu:** Dedicated, authentic beveled options menu accessible right from **Options $\rightarrow$ TOURNAMENT**.
-- **Deterministic 32-Bit Seed Override:** Locks game PRNG to a consistent initial seed for synchronized races, speedrunning, and daily community challenges.
-- **Golden-Ratio Bag Generation:** Employs deterministic multiplicative bag hashing (`0x9E3779B9`) ensuring that all players on the same seed receive the exact same sequence of pieces throughout the entire match.
-- **In-Menu Seed Customizer:** Rapidly tune seeds with D-pad or $\pm 0\text{x}1000$ bumper steps, or roll a new seed with one-button randomization.
+- **Tournament Menu:** Configurable options menu accessible directly via **Options → TOURNAMENT**.
+- **Deterministic 32-Bit Seed Override:** Locks game PRNG to a consistent seed for synchronized matches, races, and challenges.
+- **Consistent Bag Generation:** Deterministic bag hashing ensures all players on identical seeds receive identical piece sequences throughout the match.
+- **In-Menu Seed Selection:** Adjust seeds with D-pad or bumper steps, or generate random seeds on demand.
 
-### 📊 Competitive Live Sidebar HUD
-An authentic, beveled scorecard overlay rendered directly on the right side of the playfield:
-- **Dynamic Mode Display:** Displays current game mode (`MARATHON`, `SPRINT`, `ULTRA`).
-- **Integrated Match Timer:** Unobtrusive `TIME: MM:SS` counter integrated directly into the HUD card (suppressing redundant floating overlays).
-- **True Lines Cleared:** Exact count of physical 10-block lines cleared without score multiplier distortion.
-- **Live LPM (Lines Per Minute):** Real-time pacing metric updating continuously throughout play.
-- **Cubes & Blocks Breakdown:**
-  - **`TOTAL BLOCKS`**: Total $4\times 4$ cubes formed.
-  - **`GOLD BLOCKS`**: Solid single-piece $4\times 4$ cubes.
-  - **`SILVER BLOCKS`**: Multisquare $4\times 4$ cubes formed from mixed tetrominoes.
+### 📊 Live Sidebar HUD
+An integrated scorecard rendered alongside the playfield:
+- **Game Mode Display:** Current mode (`MARATHON`, `SPRINT`, `ULTRA`).
+- **Match Timer:** `TIME: MM:SS` counter integrated into the HUD card.
+- **True Lines:** Exact physical 10-block lines cleared without score multiplier distortion.
+- **Live LPM:** Pacing metric updated in real time.
+- **Block Breakdown:**
+  - **`TOTAL BLOCKS`**: Total 4×4 cubes formed.
+  - **`GOLD BLOCKS`**: Solid 4×4 single-tetromino cubes.
+  - **`SILVER BLOCKS`**: Multisquare 4×4 cubes formed from mixed tetrominoes.
 - **Cube Line Clears:**
-  - **`GOLD LINES`**: Lines cleared containing gold blocks.
-  - **`SILVER LINES`**: Lines cleared containing silver blocks.
-- **Static Match Seed:** Cleanly displays active seed (`0xXXXXXXXX`) or `RANDOM`.
+  - **`GOLD LINES`**: Cleared lines containing gold blocks.
+  - **`SILVER LINES`**: Cleared lines containing silver blocks.
+- **Match Seed:** Displays active seed or `RANDOM`.
 
-### 🌐 Discord Webhook Score Integration
-- Automatically submits post-match results directly to your Discord community via Discord Webhooks.
-- Rich embeds include Player name, Total Time, Score Lines, True Lines, LPM, Total Blocks, Gold/Silver Blocks, Gold/Silver Lines, and Seed verification.
+### 🌐 Discord Webhook Integration
+- Automatically submits post-match results to Discord via incoming webhooks.
+- Match summaries include player name, match time, score lines, true lines, LPM, block counts, and seed verification.
 
-### 🕹️ Modern Controls & Quality-of-Life
-- **In-Menu Exit Game:** Controller-navigable **`EXIT GAME`** option in the Tournament menu for seamless couch play.
-- **Clean Shutdown Architecture:** Robust RAII thread management ensuring clean exits (code `0`) with zero core dumps or hangs on window close, `ESC`, or in-menu quit.
-- **Local Leaderboard:** Built-in automatic match logging with real-time HTML rankings and CSV generation (`F4` hotkey).
-- **Native High Resolution:** Crisp RT64 rendering scaling up to 4K and Ultrawide displays at a steady 60 FPS.
+### 🕹️ Controls & Quality-of-Life
+- **In-Menu Exit Game:** Controller-navigable **`EXIT GAME`** option in the Tournament menu, as well as `ESC` key support.
+- **Local Leaderboard:** Built-in match logging with local HTML rankings and CSV generation (`F4` hotkey).
+- **High Resolution:** RT64 rendering support scaling up to 4K and ultrawide resolutions at 60 FPS.
 
 ---
 
@@ -73,7 +72,7 @@ An authentic, beveled scorecard overlay rendered directly on the right side of t
 - **F3**: Toggle on-screen FPS and VI counters.
 - **F4**: Open local HTML Leaderboard in default web browser.
 - **F11** or **Alt + Enter**: Toggle Fullscreen.
-- **Escape**: Quit game cleanly to desktop.
+- **Escape**: Exit game to desktop.
 
 ---
 
@@ -94,7 +93,7 @@ tnt64-recomp/
 ```
 
 ### Adding Soundtrack & Custom Music
-1. **Soundtrack:** Place your MP3 or WAV files into the `soundtrack/` folder. The game automatically matches track names (e.g. `morocco`, `dvie`, `polyasia`, `floppy`, `pyramid`, `giali`, `thread6`, `haluci`, `mayan`, `greek`, `egypt`, `celtic`, `africa`, `japan`, `kalinka`, `title`).
+1. **Soundtrack:** Place MP3 or WAV files into the `soundtrack/` folder. The game automatically matches track names (e.g. `morocco`, `dvie`, `polyasia`, `floppy`, `pyramid`, `giali`, `thread6`, `haluci`, `mayan`, `greek`, `egypt`, `celtic`, `africa`, `japan`, `kalinka`, `title`).
 2. **Custom Tracks:** Place any MP3 or WAV files into `custom_tracks/`. In the in-game Audio Menu, select **`CUSTOM.`** to play from your folder, or set music to **`RANDOM`** to rotate continuously through all soundtrack and custom songs.
 
 ---
@@ -106,8 +105,8 @@ Requirements: `cmake`, `ninja-build`, `clang` or `gcc`, `libsdl2-dev`.
 
 ```bash
 # 1. Clone repository
-git clone git@github.com:depressobbq/tnt64-Tournament-Edition.git
-cd tnt64-Tournament-Edition
+git clone git@github.com:depressobbq/tnt64-Reborn.git
+cd tnt64-Reborn
 
 # 2. Place your USA 1.0 ROM in the repository root as baserom.us.z64
 

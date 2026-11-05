@@ -1,7 +1,7 @@
 // Local leaderboard for The New Tetris.
 //
 // The game calls func_8007875C once per player at the end of every game, to update that
-// player's profile and the high-score tables. tnt.recomp.toml hooks its entry point to
+// player's profile and the high-score tables. its entry point calls
 // tnt_on_game_result(), which reads the result and appends it to tnt_data/leaderboard.csv.
 // tnt_data/leaderboard.html is then rebuilt: per-mode rankings, every game played, and the
 // game's own high-score tables as currently held in its save data.
@@ -295,7 +295,7 @@ extern "C" void tnt_on_game_result(uint8_t* rdram, recomp_context* ctx) {
     g.score = rd32(rdram, results + 0x18 + 4 * idx);
     g.lines = rd32(rdram, results + 0x28 + 4 * idx);
 
-    // TNT Reborn: notify match finish (Discord webhook / stats)
+    // Broadcast match completion statistics
     tnt::tournament::on_match_finish(g.mode, g.name, g.score, g.lines, g.seconds);
 
     std::string msg;

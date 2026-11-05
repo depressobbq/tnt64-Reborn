@@ -25,10 +25,10 @@ namespace tnt::tournament {
 
     LiveStats get_live_stats(uint8_t* rdram, uint64_t frame);
 
-    // Subroutine to read live PRNG seed state directly from N64 RDRAM
+    // Read live PRNG seed state directly from N64 RDRAM
     uint32_t read_live_seed(uint8_t* rdram);
 
-    // Called on game completion to post scores to Discord webhook
+    // Post scores to Discord webhook on match completion
     void on_match_finish(int mode, const std::string& name, uint32_t score, uint32_t true_lines, uint32_t seconds);
 
     // Tournament In-Game Options Menu
@@ -45,7 +45,7 @@ namespace tnt::tournament {
     MenuRenderState get_menu_render_state();
 }
 
-// Hooks called from recompiled C code
+// Interface functions invoked from recompiled code
 extern "C" {
     void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx);
     void tnt_on_match_piece_init(uint8_t* rdram, recomp_context* ctx);

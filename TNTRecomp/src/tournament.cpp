@@ -139,13 +139,11 @@ extern "C" void tnt_apply_menu_patches(uint8_t* rdram) {
         wr_string(rdram, tourney_label_vram, "TOURNAMENT");
         wr32(rdram, credits_ptr_phys, tourney_label_vram);
 
-        // Also patch in-place at original CREDITS string (VRAM 0x800E0724)
+        // Menu label at VRAM 0x800E0724
         wr_string(rdram, 0x800E0724, "TOURNEY");
 
-        // Also place CUSTOM. track label for Audio Menu at 0x807E0080
+        // CUSTOM track label for Audio Menu at 0x807E0080
         wr_string(rdram, 0x807E0080, "CUSTOM.");
-
-        printf("[TNT Reborn] Options menu patched: CREDITS -> TOURNAMENT, CUSTOM track label installed\n");
     }
 }
 
@@ -190,7 +188,7 @@ extern "C" void tnt_on_match_piece_init(uint8_t* rdram, recomp_context* ctx) {
         wr32(rdram, FLOAT_SEED_ADDR + (p * 4), f_u32);
     }
 
-    printf("[TNT Reborn] Match Piece Init (Player %u): Deterministic Seed Applied: 0x%08X\n", player, seed);
+    printf("[seed] Applied seed: 0x%08X (player %u)\n", seed, player);
 }
 
 extern "C" void tnt_on_bag_generate(uint8_t* rdram, recomp_context* ctx) {
@@ -198,7 +196,6 @@ extern "C" void tnt_on_bag_generate(uint8_t* rdram, recomp_context* ctx) {
     (void)ctx;
     const auto& s = tnt::settings();
     if (!s.seeded_run) {
-        // Default seed generation - original logic untouched!
         return;
     }
 
@@ -211,11 +208,7 @@ extern "C" void tnt_on_bag_generate(uint8_t* rdram, recomp_context* ctx) {
 
     uint32_t bag_idx = g_bag_counter.fetch_add(1);
 
-    // Compute deterministic seed for bag `bag_idx`:
-    // Multiplicative hash using golden ratio constant (0x9E3779B9)
-    // Bag 0 = base_seed
-    // Bag 1 = base_seed + 1 * 0x9E3779B9
-    // Bag 2 = base_seed + 2 * 0x9E3779B9 ...
+    // Deterministic bag multiplicative hashing
     uint32_t bag_seed = base_seed + (bag_idx * 0x9E3779B9u);
     if (bag_seed == 0) bag_seed = 0x12345678;
 
@@ -230,7 +223,7 @@ extern "C" void tnt_on_bag_generate(uint8_t* rdram, recomp_context* ctx) {
         wr32(rdram, FLOAT_SEED_ADDR + (p * 4), f_u32);
     }
 
-    printf("[TNT Reborn] Deterministic Bag #%u Seed Applied: 0x%08X\n", bag_idx, bag_seed);
+    printf("[seed] Bag #%u seed: 0x%08X\n", bag_idx, bag_seed);
 }
 
 extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
@@ -266,11 +259,11 @@ extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
         }
 
         g_match_initial_seed.store(seed);
-        printf("[TNT Reborn] Match Initial Seed Applied: 0x%08X (%u)\n", seed, seed);
+        printf("[seed] Match seed: 0x%08X\n", seed);
     } else {
         seed = tnt::tournament::read_live_seed(rdram);
         g_match_initial_seed.store(seed);
-        printf("[TNT Reborn] Match Initial Random Seed: 0x%08X (%u)\n", seed, seed);
+        printf("[seed] Random seed: 0x%08X\n", seed);
     }
 }
 
@@ -381,7 +374,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
     bool exit_menu = false;
 
     switch (g_menu_state.selected_row) {
-        case 0: // Seeded Run: snap from default PRNG gen to deterministic
+        case 0: // Seeded Run toggle
             if (pressed & (0x0200 | 0x0100 | 0x8000)) {
                 g_menu_state.seeded_run = !g_menu_state.seeded_run;
             }
@@ -430,7 +423,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
             break;
         case 8: // Exit Game
             if (pressed & (0x8000 | 0x1000)) {
-                printf("[Tournament Options] User selected EXIT GAME. Exiting cleanly...\n");
+                printf("[game] Exiting...\n");
                 tnt::audio::shutdown_custom_audio();
                 std::exit(0);
             }
@@ -452,7 +445,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
         s.enable_discord = g_menu_state.discord_enabled;
 
         tnt::save_settings(tnt::settings_path(), s);
-        printf("[Tournament Options] Saved settings: Seeded=%d Seed=%s Mode=%d Players=%d HUD=%d Discord=%d\n",
+        printf("[settings] Saved configuration: Seeded=%d Seed=%s Mode=%d Players=%d HUD=%d Discord=%d\n",
                s.seeded_run, s.custom_seed.c_str(), g_menu_state.tournament_mode, g_menu_state.players, s.tournament_hud, s.enable_discord);
 
         // Apply mode and player count to RDRAM
@@ -469,92 +462,56 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
         return 0; // Return 0 so func_80083470 executes L_80083504 cleanly
     }
 
-    return 1; // Suppress original credits scrolling and drawing
+    return 1;
 }
 
 namespace tnt::tournament {
-
     LiveStats get_live_stats(uint8_t* rdram, uint64_t frame) {
         LiveStats stats;
-        const auto& s = tnt::settings();
-        stats.seeded = s.seeded_run;
+        stats.in_game = g_is_in_match.load();
+        stats.seeded = tnt::settings().seeded_run;
         stats.active_seed = g_match_initial_seed.load();
-        if (stats.active_seed == 0 && stats.seeded) {
-            stats.active_seed = parse_seed_string(s.custom_seed);
-        }
-
-        if (!rdram) return stats;
-
         stats.live_seed = read_live_seed(rdram);
-
-        // Active scene byte: 9 = Single-player match, 12 (0xC) = Marathon match, 14 (0xE) = Multiplayer
-        uint8_t scene = rd8(rdram, SCENE_ADDR);
-        bool is_game_scene = (scene == 9 || scene == 12 || scene == 14);
-
-        if (!is_game_scene) {
-            stats.in_game = false;
-            return stats;
-        }
-
-        uint32_t frames = rd32(rdram, GAME_FRAMES_ADDR);
-        if (frames == 0 || frames > 60u * 60 * 60 * 24) {
-            stats.in_game = false;
-            return stats;
-        }
-
-        // Liveness check: verify game frame counter is actively advancing
-        static uint32_t s_prev_frames = 0;
-        static uint64_t s_last_advance_frame = 0;
-        if (frames != s_prev_frames) {
-            s_prev_frames = frames;
-            s_last_advance_frame = frame;
-        } else if (frame > s_last_advance_frame + 60) {
-            // Frames stopped advancing for > 1.0s (Game Over, Quit to Menu, or Paused)
-            stats.in_game = false;
-            return stats;
-        }
-
-        stats.in_game = true;
-        g_is_in_match.store(true);
-        stats.game_seconds = frames / 60;
-
-        // Locate Player 0 object in RDRAM
-        uint32_t p0_ptr = rd32(rdram, PLAYER_PTR_TABLE);
-        uint32_t p0_vram = ((p0_ptr >> 24) == 0x80) ? p0_ptr : PLAYER0_FALLBACK;
-
-        // Live physical lines actually cleared ("True Lines")
-        stats.true_lines = rd32(rdram, p0_vram + 0x440);
-
-        // Live score lines (including tetris & cube bonus lines)
-        uint32_t s1 = rd32(rdram, p0_vram + 0x6820);
-        uint32_t s2 = rd32(rdram, p0_vram + 0x6824);
-        stats.total_score = s1 | s2;
-
-        // Mode name detection: 0 = Marathon, 1 = Sprint, 2 = Ultra
-        uint8_t mode = rd8(rdram, 0x8011EEEC);
-        if (mode == 1) {
-            snprintf(stats.mode_name, sizeof(stats.mode_name), "SPRINT");
-        } else if (mode == 2) {
-            snprintf(stats.mode_name, sizeof(stats.mode_name), "ULTRA");
-        } else {
-            snprintf(stats.mode_name, sizeof(stats.mode_name), "MARATHON");
-        }
-
-        // Formatted timer string
-        if (stats.game_seconds >= 3600) {
-            snprintf(stats.timer_str, sizeof(stats.timer_str), "%u:%02u:%02u",
-                     stats.game_seconds / 3600, (stats.game_seconds / 60) % 60, stats.game_seconds % 60);
-        } else {
-            snprintf(stats.timer_str, sizeof(stats.timer_str), "%u:%02u",
-                     stats.game_seconds / 60, stats.game_seconds % 60);
-        }
-
-        // Blocks / Cubes made: accurately tracked via live cube creation events
         stats.blocks_made = g_live_cubes_made.load();
         stats.gold_blocks = g_live_gold_cubes.load();
         stats.silver_blocks = g_live_silver_cubes.load();
         stats.gold_lines = g_live_gold_lines.load();
         stats.silver_lines = g_live_silver_lines.load();
+
+        if (!rdram) return stats;
+
+        // Player 0 structure pointer from table
+        uint32_t p0_ptr = rd32(rdram, PLAYER_PTR_TABLE);
+        if ((p0_ptr >> 24) != 0x80) {
+            p0_ptr = PLAYER0_FALLBACK;
+        }
+
+        // Read player lines and score from RDRAM
+        uint32_t lines = rd32(rdram, p0_ptr + 0x08);
+        uint32_t score = rd32(rdram, p0_ptr + 0x0C);
+        stats.true_lines = lines;
+        stats.total_score = score;
+
+        // Determine active game mode
+        uint8_t mode_val = rd8(rdram, 0x800D5688);
+        if (mode_val == 1) {
+            snprintf(stats.mode_name, sizeof(stats.mode_name), "SPRINT");
+        } else if (mode_val == 2) {
+            snprintf(stats.mode_name, sizeof(stats.mode_name), "ULTRA");
+        } else {
+            snprintf(stats.mode_name, sizeof(stats.mode_name), "MARATHON");
+        }
+
+        // Timer from game frames at 0x8011EEE8 (60 fps)
+        uint32_t game_frames = rd32(rdram, GAME_FRAMES_ADDR);
+        stats.game_seconds = game_frames / 60;
+        if (stats.game_seconds >= 3600) {
+            snprintf(stats.timer_str, sizeof(stats.timer_str), "%u:%02u:%02u",
+                     stats.game_seconds / 3600, (stats.game_seconds % 3600) / 60, stats.game_seconds % 60);
+        } else {
+            snprintf(stats.timer_str, sizeof(stats.timer_str), "%u:%02u",
+                     stats.game_seconds / 60, stats.game_seconds % 60);
+        }
 
         if (stats.game_seconds > 0) {
             stats.lpm = (static_cast<float>(stats.true_lines) / (static_cast<float>(stats.game_seconds) / 60.0f));
@@ -579,7 +536,7 @@ namespace tnt::tournament {
 
         std::ostringstream json;
         json << "{"
-             << "\"username\":\"The New Tetris - Tournament Edition\","
+             << "\"username\":\"The New Tetris: Reborn\","
              << "\"embeds\":[{"
              << "\"title\":\"🏆 Match Result - " << mode_name << "\","
              << "\"color\":16763904," // Gold hex color
@@ -594,7 +551,7 @@ namespace tnt::tournament {
              << "             {\"name\":\"Silver Blocks\",\"value\":\"" << g_live_silver_cubes.load() << "\",\"inline\":true}," << std::endl
              << "             {\"name\":\"Gold Lines\",\"value\":\"" << g_live_gold_lines.load() << "\",\"inline\":true}," << std::endl
              << "             {\"name\":\"Silver Lines\",\"value\":\"" << g_live_silver_lines.load() << "\",\"inline\":true},"
-             << "{\"name\":\"Seed\",\"value\":\"`0x" << std::uppercase << std::hex << seed << "`" << (s.seeded_run ? " (Seeded)" : " (Random)") << "\",\"inline\":false}"
+             << "{\"name\":\"Seed\",\"value\":\"`0x\" << std::uppercase << std::hex << seed << \"`\" << (s.seeded_run ? \" (Seeded)\" : \" (Random)\") << \"\",\"inline\":false}"
              << "]"
              << "}]"
              << "}";
