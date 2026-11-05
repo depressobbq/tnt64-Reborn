@@ -262,7 +262,10 @@ namespace tnt {
             std::filesystem::path tex_dir = st.texture_pack.empty()
                 ? (tnt::data_folder().parent_path() / "textures")
                 : std::filesystem::path(st.texture_pack);
-            if (std::filesystem::exists(tex_dir)) {
+            bool has_pack = (!st.texture_pack.empty() && std::filesystem::exists(tex_dir))
+                || std::filesystem::exists(tex_dir / "rt64.json")
+                || (std::filesystem::is_regular_file(tex_dir) && tex_dir.extension() == ".rtz");
+            if (has_pack) {
                 if (app->textureCache->loadReplacementDirectory(RT64::ReplacementDirectory(tex_dir))) {
                     printf("[gfx] Loaded replacement texture directory: %s\n", tex_dir.string().c_str());
                 } else {

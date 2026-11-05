@@ -41,9 +41,9 @@ An integrated scorecard rendered alongside the playfield:
 - **Match Seed:** Displays active seed or `RANDOM`.
 
 ### 🎨 HD Texture Packs & Texture Dumping
-- **Zero-Overhead Texture Replacement:** Automatically loads high-resolution PNG or DDS textures from `textures/` via RT64's native replacement pipeline with zero performance penalty.
-- **Built-in Texture Dumper:** Dump native N64 textures during gameplay via `dump_textures = true` in `settings.ini` or `--dump-textures` CLI flag.
-- **Processing Tool:** Includes `tools/process_dumped_textures.py` to batch-convert raw TMEM tile dumps into clean PNGs and build the replacement database (`rt64.json`).
+- **Zero-Overhead Texture Replacement:** Automatically loads high-resolution PNG or DDS textures placed in `textures/` via RT64's native replacement pipeline with zero performance penalty.
+- **Built-in Texture Dumper:** Dump native N64 textures during gameplay via `dump_textures = true` in `settings.ini` or `--dump-textures` CLI flag into `dumped_textures/`.
+- **Processing Tool:** Includes `tools/process_dumped_textures.py` to batch-convert raw dumps into clean PNGs in `dumped_textures/png/`.
 
 ### 🌐 Discord Webhook Integration
 - Automatically submits post-match results to Discord via incoming webhooks.
@@ -93,7 +93,7 @@ tnt64-recomp/
 ├── custom_tracks/           # (Optional) Any MP3 or WAV tracks for custom rotation
 │   ├── my_favorite_song.mp3
 │   └── ...
-├── textures/                # (Optional) High-resolution replacement textures (.png / .dds)
+├── textures/                # (Optional) Custom high-resolution replacement textures (.png / .dds)
 │   ├── rt64.json
 │   └── ...
 ├── play.sh                  # Linux launcher script
@@ -106,8 +106,8 @@ tnt64-recomp/
 
 ### Using HD Textures & Dumping
 1. **Dump Textures:** Run `./play.sh --dump-textures` (or set `dump_textures = true` in `settings.ini`). The game will save all textures encountered into `dumped_textures/`.
-2. **Decode to PNG:** Run `python3 tools/process_dumped_textures.py` to extract all tiles into clean PNG images and generate `textures/rt64.json`.
-3. **Customize:** Edit or AI-upscale any textures in `textures/`.
+2. **Decode to PNG:** Run `python3 tools/process_dumped_textures.py` to extract all tiles into clean PNG images in `dumped_textures/png/`.
+3. **Customize:** Place any replacement PNGs and `rt64.json` into `textures/`.
 4. **Play:** Start the game normally. Reborn will automatically load your replacement textures on boot.
 
 ---
