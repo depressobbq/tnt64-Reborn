@@ -24,7 +24,7 @@ namespace tnt {
         std::string resolution = "auto";       // auto, native, 2x
         std::string antialiasing = "8x";       // none, 2x, 4x, 8x
         std::string filtering = "pixel_scaling"; // pixel_scaling, linear, nearest
-        std::string upscale_2d = "all";         // all, scaled_only, original
+        std::string upscale_2d = "scaled_only"; // scaled_only, all, original
         std::string aspect_ratio = "original"; // original, widescreen
         std::string refresh_rate = "original"; // original, display, manual
         int refresh_rate_value = 60;

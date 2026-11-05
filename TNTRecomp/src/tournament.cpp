@@ -208,22 +208,14 @@ extern "C" void tnt_on_bag_generate(uint8_t* rdram, recomp_context* ctx) {
 
     uint32_t bag_idx = g_bag_counter.fetch_add(1);
 
-    // Deterministic bag multiplicative hashing
-    uint32_t bag_seed = base_seed + (bag_idx * 0x9E3779B9u);
-    if (bag_seed == 0) bag_seed = 0x12345678;
+    // Predictable 64-bit LCG step for deterministic multi-bag piece sequences
+    uint64_t state = (static_cast<uint64_t>(base_seed) ^ (static_cast<uint64_t>(bag_idx) * 0x5DEECE66DULL)) + 0xBULL;
+    state = (state * 0x5DEECE66DULL + 0xBULL) & 0xFFFFFFFFFFFFULL;
+    uint32_t next_seed = static_cast<uint32_t>(state >> 16);
 
     for (int p = 0; p < 4; ++p) {
-        wr32(rdram, SEED_ADDR + (p * 4), bag_seed);
+        wr32(rdram, SEED_ADDR + (p * 4), next_seed);
     }
-
-    float f_val = static_cast<float>(bag_seed % 100001u);
-    uint32_t f_u32 = 0;
-    memcpy(&f_u32, &f_val, sizeof(float));
-    for (int p = 0; p < 4; ++p) {
-        wr32(rdram, FLOAT_SEED_ADDR + (p * 4), f_u32);
-    }
-
-    printf("[seed] Bag #%u seed: 0x%08X\n", bag_idx, bag_seed);
 }
 
 extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
@@ -267,13 +259,17 @@ extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+extern "C" void tnt_on_match_start(uint8_t* rdram, recomp_context* ctx) {
+    tnt_apply_seed_override(rdram, ctx);
+}
+
 extern "C" void tnt_on_cube_formed(uint8_t* rdram, recomp_context* ctx) {
     (void)rdram;
     if (ctx) {
         uint32_t cube_type = ctx->r6 & 0xFF;
-        if (cube_type == 1) {
+        if (cube_type == 2) {
             g_live_gold_cubes.fetch_add(1);
-        } else if (cube_type == 2) {
+        } else if (cube_type == 1) {
             g_live_silver_cubes.fetch_add(1);
         }
     }
@@ -284,9 +280,12 @@ extern "C" void tnt_on_line_cleared(uint8_t* rdram, recomp_context* ctx) {
     (void)rdram;
     if (ctx) {
         uint32_t clear_type = ctx->r6 & 0xFF;
-        if (clear_type == 3) {
+        if (clear_type == 4) {
             g_live_gold_lines.fetch_add(1);
         } else if (clear_type == 2) {
+            g_live_silver_lines.fetch_add(1);
+        } else if (clear_type == 3) {
+            g_live_gold_lines.fetch_add(1);
             g_live_silver_lines.fetch_add(1);
         }
     }
@@ -349,26 +348,16 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
     if (stick_x < -40) buttons |= 0x0200; // Left
     if (stick_x > 40) buttons |= 0x0100;  // Right
 
+    // Edge detect button presses
     static uint16_t s_last_buttons = 0;
-    static int s_repeat_timer = 0;
     uint16_t pressed = buttons & ~s_last_buttons;
-
-    if (buttons != 0 && buttons == s_last_buttons) {
-        s_repeat_timer++;
-        if (s_repeat_timer > 20 && (s_repeat_timer % 6 == 0)) {
-            pressed = buttons;
-        }
-    } else {
-        s_repeat_timer = 0;
-    }
     s_last_buttons = buttons;
 
-    constexpr int NUM_ROWS = 9;
     if (pressed & 0x0800) { // Up
-        g_menu_state.selected_row = (g_menu_state.selected_row + NUM_ROWS - 1) % NUM_ROWS;
+        g_menu_state.selected_row = (g_menu_state.selected_row + 8) % 9;
     }
     if (pressed & 0x0400) { // Down
-        g_menu_state.selected_row = (g_menu_state.selected_row + 1) % NUM_ROWS;
+        g_menu_state.selected_row = (g_menu_state.selected_row + 1) % 9;
     }
 
     bool exit_menu = false;
@@ -379,44 +368,34 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
                 g_menu_state.seeded_run = !g_menu_state.seeded_run;
             }
             break;
-        case 1: // Match Seed Adjust
-            if (pressed & 0x0100) g_menu_state.current_seed++;
-            if (pressed & 0x0200) g_menu_state.current_seed--;
-            if (pressed & 0x0010) g_menu_state.current_seed += 0x1000; // R
-            if (pressed & 0x0020) g_menu_state.current_seed -= 0x1000; // L
-            if (pressed & 0x8000) { // A: Randomize
-                g_menu_state.current_seed = ((uint32_t)rand() << 16) ^ (uint32_t)rand();
+        case 1: // Mode: 0: Marathon, 1: Sprint, 2: Ultra
+            if (pressed & 0x0100) g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 1) % 3;
+            if (pressed & 0x0200) g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 2) % 3;
+            break;
+        case 2: // Players: 1 or 2
+            if (pressed & (0x0100 | 0x0200)) g_menu_state.players = (g_menu_state.players == 1) ? 2 : 1;
+            break;
+        case 3: // Seed Hex Digit Adjust
+            if (pressed & 0x0100) g_menu_state.current_seed += 0x00010000;
+            if (pressed & 0x0200) g_menu_state.current_seed -= 0x00010000;
+            break;
+        case 4: // Randomize Seed
+            if (pressed & (0x8000 | 0x0100 | 0x0200)) {
+                g_menu_state.current_seed = static_cast<uint32_t>(rand()) ^ (static_cast<uint32_t>(rand()) << 16);
+                if (g_menu_state.current_seed == 0) g_menu_state.current_seed = 0x12345678;
             }
             break;
-        case 2: // Randomize Seed Action
-            if (pressed & (0x8000 | 0x0200 | 0x0100)) {
-                g_menu_state.current_seed = ((uint32_t)rand() << 16) ^ (uint32_t)rand();
-            }
-            break;
-        case 3: // Game Type: Marathon / Sprint / Ultra
-            if (pressed & 0x0100) {
-                g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 1) % 3;
-            }
-            if (pressed & (0x0200 | 0x8000)) {
-                g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 2) % 3;
-            }
-            break;
-        case 4: // Players: 1 Player / 2 Players
-            if (pressed & (0x0200 | 0x0100 | 0x8000)) {
-                g_menu_state.players = (g_menu_state.players == 1) ? 2 : 1;
-            }
-            break;
-        case 5: // Sidebar HUD
+        case 5: // HUD Toggle
             if (pressed & (0x0200 | 0x0100 | 0x8000)) {
                 g_menu_state.hud_enabled = !g_menu_state.hud_enabled;
             }
             break;
-        case 6: // Discord Share
+        case 6: // Discord Webhook Toggle
             if (pressed & (0x0200 | 0x0100 | 0x8000)) {
                 g_menu_state.discord_enabled = !g_menu_state.discord_enabled;
             }
             break;
-        case 7: // Save & Return
+        case 7: // Start Match
             if (pressed & (0x8000 | 0x1000)) {
                 exit_menu = true;
             }
@@ -430,17 +409,16 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
             break;
     }
 
-    // B button exits and saves
-    if (pressed & 0x4000) {
+    if (pressed & 0x4000) { // B Button: Return / Back
         exit_menu = true;
     }
 
     if (exit_menu) {
-        auto& s = tnt::settings();
+        auto s = tnt::settings();
         s.seeded_run = g_menu_state.seeded_run;
-        char buf[32];
-        snprintf(buf, sizeof(buf), "0x%08X", g_menu_state.current_seed);
-        s.custom_seed = buf;
+        char hex_buf[16];
+        snprintf(hex_buf, sizeof(hex_buf), "0x%08X", g_menu_state.current_seed);
+        s.custom_seed = hex_buf;
         s.tournament_hud = g_menu_state.hud_enabled;
         s.enable_discord = g_menu_state.discord_enabled;
 
@@ -468,43 +446,71 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
 namespace tnt::tournament {
     LiveStats get_live_stats(uint8_t* rdram, uint64_t frame) {
         LiveStats stats;
-        stats.in_game = g_is_in_match.load();
-        stats.seeded = tnt::settings().seeded_run;
+        const auto& s = tnt::settings();
+        stats.seeded = s.seeded_run;
         stats.active_seed = g_match_initial_seed.load();
-        stats.live_seed = read_live_seed(rdram);
-        stats.blocks_made = g_live_cubes_made.load();
-        stats.gold_blocks = g_live_gold_cubes.load();
-        stats.silver_blocks = g_live_silver_cubes.load();
-        stats.gold_lines = g_live_gold_lines.load();
-        stats.silver_lines = g_live_silver_lines.load();
+        if (stats.active_seed == 0 && stats.seeded) {
+            stats.active_seed = parse_seed_string(s.custom_seed);
+        }
 
         if (!rdram) return stats;
 
-        // Player 0 structure pointer from table
-        uint32_t p0_ptr = rd32(rdram, PLAYER_PTR_TABLE);
-        if ((p0_ptr >> 24) != 0x80) {
-            p0_ptr = PLAYER0_FALLBACK;
+        stats.live_seed = read_live_seed(rdram);
+
+        // Active scene byte: 9 = Single-player match, 12 (0xC) = Marathon match, 14 (0xE) = Multiplayer
+        uint8_t scene = rd8(rdram, SCENE_ADDR);
+        bool is_game_scene = (scene == 9 || scene == 12 || scene == 14);
+
+        if (!is_game_scene) {
+            stats.in_game = false;
+            return stats;
         }
 
-        // Read player lines and score from RDRAM
-        uint32_t lines = rd32(rdram, p0_ptr + 0x08);
-        uint32_t score = rd32(rdram, p0_ptr + 0x0C);
-        stats.true_lines = lines;
-        stats.total_score = score;
+        uint32_t frames = rd32(rdram, GAME_FRAMES_ADDR);
+        if (frames == 0 || frames > 60u * 60 * 60 * 24) {
+            stats.in_game = false;
+            return stats;
+        }
 
-        // Determine active game mode
-        uint8_t mode_val = rd8(rdram, 0x800D5688);
-        if (mode_val == 1) {
+        // Liveness check: verify game frame counter is actively advancing
+        static uint32_t s_prev_frames = 0;
+        static uint64_t s_last_advance_frame = 0;
+        if (frames != s_prev_frames) {
+            s_prev_frames = frames;
+            s_last_advance_frame = frame;
+        } else if (frame > s_last_advance_frame + 60) {
+            // Frames stopped advancing for > 1.0s (Game Over, Quit to Menu, or Paused)
+            stats.in_game = false;
+            return stats;
+        }
+
+        stats.in_game = true;
+        g_is_in_match.store(true);
+        stats.game_seconds = frames / 60;
+
+        // Locate Player 0 object in RDRAM
+        uint32_t p0_ptr = rd32(rdram, PLAYER_PTR_TABLE);
+        uint32_t p0_vram = ((p0_ptr >> 24) == 0x80) ? p0_ptr : PLAYER0_FALLBACK;
+
+        // Live physical lines actually cleared ("True Lines")
+        stats.true_lines = rd32(rdram, p0_vram + 0x440);
+
+        // Live score lines (including tetris & cube bonus lines)
+        uint32_t s1 = rd32(rdram, p0_vram + 0x6820);
+        uint32_t s2 = rd32(rdram, p0_vram + 0x6824);
+        stats.total_score = s1 | s2;
+
+        // Mode name detection: 0 = Marathon, 1 = Sprint, 2 = Ultra
+        uint8_t mode = rd8(rdram, 0x8011EEEC);
+        if (mode == 1) {
             snprintf(stats.mode_name, sizeof(stats.mode_name), "SPRINT");
-        } else if (mode_val == 2) {
+        } else if (mode == 2) {
             snprintf(stats.mode_name, sizeof(stats.mode_name), "ULTRA");
         } else {
             snprintf(stats.mode_name, sizeof(stats.mode_name), "MARATHON");
         }
 
-        // Timer from game frames at 0x8011EEE8 (60 fps)
-        uint32_t game_frames = rd32(rdram, GAME_FRAMES_ADDR);
-        stats.game_seconds = game_frames / 60;
+        // Formatted timer string
         if (stats.game_seconds >= 3600) {
             snprintf(stats.timer_str, sizeof(stats.timer_str), "%u:%02u:%02u",
                      stats.game_seconds / 3600, (stats.game_seconds % 3600) / 60, stats.game_seconds % 60);
@@ -512,6 +518,13 @@ namespace tnt::tournament {
             snprintf(stats.timer_str, sizeof(stats.timer_str), "%u:%02u",
                      stats.game_seconds / 60, stats.game_seconds % 60);
         }
+
+        // Blocks / Cubes made: accurately tracked via live cube creation events
+        stats.blocks_made = g_live_cubes_made.load();
+        stats.gold_blocks = g_live_gold_cubes.load();
+        stats.silver_blocks = g_live_silver_cubes.load();
+        stats.gold_lines = g_live_gold_lines.load();
+        stats.silver_lines = g_live_silver_lines.load();
 
         if (stats.game_seconds > 0) {
             stats.lpm = (static_cast<float>(stats.true_lines) / (static_cast<float>(stats.game_seconds) / 60.0f));
@@ -551,7 +564,7 @@ namespace tnt::tournament {
              << "             {\"name\":\"Silver Blocks\",\"value\":\"" << g_live_silver_cubes.load() << "\",\"inline\":true}," << std::endl
              << "             {\"name\":\"Gold Lines\",\"value\":\"" << g_live_gold_lines.load() << "\",\"inline\":true}," << std::endl
              << "             {\"name\":\"Silver Lines\",\"value\":\"" << g_live_silver_lines.load() << "\",\"inline\":true},"
-             << "{\"name\":\"Seed\",\"value\":\"`0x\" << std::uppercase << std::hex << seed << \"`\" << (s.seeded_run ? \" (Seeded)\" : \" (Random)\") << \"\",\"inline\":false}"
+             << "{\"name\":\"Seed\",\"value\":\"`0x" << std::uppercase << std::hex << seed << "`" << (s.seeded_run ? " (Seeded)" : " (Random)") << "\",\"inline\":false}"
              << "]"
              << "}]"
              << "}";

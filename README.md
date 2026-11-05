@@ -136,7 +136,7 @@ fullscreen = false
 resolution = auto
 antialiasing = 8x
 filtering = pixel_scaling
-upscale_2d = all
+upscale_2d = scaled_only
 aspect_ratio = original
 show_fps = false
 
