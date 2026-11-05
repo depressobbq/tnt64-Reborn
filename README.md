@@ -134,7 +134,9 @@ A default `settings.ini` is generated on first launch:
 [display]
 fullscreen = false
 resolution = auto
-antialiasing = msaa4
+antialiasing = 8x
+filtering = pixel_scaling
+upscale_2d = all
 aspect_ratio = original
 show_fps = false
 

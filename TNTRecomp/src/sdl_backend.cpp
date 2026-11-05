@@ -416,8 +416,12 @@ namespace {
         cfg.hr_option = HUDRatioMode::Original;
         cfg.api_option = st.renderer == "d3d12" ? GraphicsApi::D3D12 : st.renderer == "vulkan" ? GraphicsApi::Vulkan : GraphicsApi::Auto;
         cfg.ar_option = st.aspect_ratio == "widescreen" ? AspectRatio::Expand : AspectRatio::Original;
-        cfg.msaa_option = st.antialiasing == "2x" ? Antialiasing::MSAA2X : st.antialiasing == "4x" ? Antialiasing::MSAA4X
-                        : st.antialiasing == "8x" ? Antialiasing::MSAA8X : Antialiasing::None;
+        std::string aa = st.antialiasing;
+        for (char& c : aa) c = (char)std::tolower((unsigned char)c);
+        cfg.msaa_option = (aa == "2x" || aa == "msaa2") ? Antialiasing::MSAA2X
+                        : (aa == "4x" || aa == "msaa4") ? Antialiasing::MSAA4X
+                        : (aa == "8x" || aa == "msaa8") ? Antialiasing::MSAA8X
+                        : Antialiasing::None;
         cfg.rr_option = st.refresh_rate == "display" ? RefreshRate::Display : st.refresh_rate == "manual" ? RefreshRate::Manual : RefreshRate::Original;
         cfg.rr_manual_value = st.refresh_rate_value;
         cfg.hpfb_option = HighPrecisionFramebuffer::Auto;
@@ -431,6 +435,7 @@ namespace {
             else if (a == "--msaa2") cfg.msaa_option = Antialiasing::MSAA2X;
             else if (a == "--msaa4") cfg.msaa_option = Antialiasing::MSAA4X;
             else if (a == "--msaa8") cfg.msaa_option = Antialiasing::MSAA8X;
+            else if (a == "--no-msaa") cfg.msaa_option = Antialiasing::None;
             else if (a == "--native-res") cfg.res_option = Resolution::Original;
             else if (a == "--widescreen") cfg.ar_option = AspectRatio::Expand;
             else if (a == "--display-refresh") cfg.rr_option = RefreshRate::Display;

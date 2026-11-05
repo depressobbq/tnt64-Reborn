@@ -43,7 +43,12 @@ const std::vector<tnt::SettingField>& tnt::setting_fields() {
         { "display", "window_y", &S::window_y, {}, -1, 16384, "" },
         { "display", "resolution", &S::resolution, { "auto", "native", "2x" }, 0, 0,
           "auto renders at the window's resolution; native is the N64's 320x240; 2x is 640x480." },
-        { "display", "antialiasing", &S::antialiasing, { "none", "2x", "4x", "8x" }, 0, 0, "MSAA level." },
+        { "display", "antialiasing", &S::antialiasing, { "none", "2x", "4x", "8x" }, 0, 0,
+          "MSAA level (8x recommended for clean, smooth polygon and block edges)." },
+        { "display", "filtering", &S::filtering, { "pixel_scaling", "linear", "nearest" }, 0, 0,
+          "Texture & VI filtering. pixel_scaling eliminates non-integer shimmering on 2D elements." },
+        { "display", "upscale_2d", &S::upscale_2d, { "all", "scaled_only", "original" }, 0, 0,
+          "all renders 2D text, HUD, and UI elements directly at target screen resolution." },
         { "display", "aspect_ratio", &S::aspect_ratio, { "original", "widescreen" }, 0, 0,
           "widescreen extends the 3D scenes to fill the window (experimental)." },
         { "display", "refresh_rate", &S::refresh_rate, { "original", "display", "manual" }, 0, 0,
@@ -189,7 +194,7 @@ bool tnt::load_settings(const std::filesystem::path& path, Settings& out, std::v
 
 bool tnt::save_settings(const std::filesystem::path& path, const Settings& s) {
     std::ostringstream o;
-    o << "; The New Tetris: Recompiled settings\n"
+    o << "; The New Tetris: Reborn settings\n"
       << "; Edit with any text editor; changes apply the next time the game starts.\n"
       << "; Delete this file to go back to the defaults.\n";
     const char* section = "";

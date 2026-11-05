@@ -18,6 +18,7 @@
 #include <chrono>
 #include <string>
 #include "leaderboard.hpp"
+#include "settings.hpp"
 std::atomic<uint64_t> tnt_dl_count{0}, tnt_screen_count{0};
 std::atomic<bool> tnt_overlay_enabled{true};   // toggled with F3 (sdl_backend.cpp)
 std::atomic<float> tnt_game_fps{0.0f}, tnt_vi_rate{0.0f};
@@ -126,6 +127,23 @@ static void apply_user_config(RT64::Application* app, const ultramodern::rendere
     app->userConfig.displayBuffering = RT64::UserConfiguration::DisplayBuffering::Triple;
     // N64 hardware-accurate 3-point triangular filtering prevents sampling past texture boundaries into TMEM
     app->userConfig.threePointFiltering = true;
+
+    const auto& st = tnt::settings();
+    if (st.filtering == "linear") {
+        app->userConfig.filtering = RT64::UserConfiguration::Filtering::Linear;
+    } else if (st.filtering == "nearest") {
+        app->userConfig.filtering = RT64::UserConfiguration::Filtering::Nearest;
+    } else {
+        app->userConfig.filtering = RT64::UserConfiguration::Filtering::AntiAliasedPixelScaling;
+    }
+
+    if (st.upscale_2d == "scaled_only") {
+        app->userConfig.upscale2D = RT64::UserConfiguration::Upscale2D::ScaledOnly;
+    } else if (st.upscale_2d == "original") {
+        app->userConfig.upscale2D = RT64::UserConfiguration::Upscale2D::Original;
+    } else {
+        app->userConfig.upscale2D = RT64::UserConfiguration::Upscale2D::All;
+    }
 }
 
 static ultramodern::renderer::SetupResult map_setup_result(RT64::Application::SetupResult r) {
@@ -211,6 +229,10 @@ namespace tnt {
             // S2DEX & Rect enhancements to eliminate bilinear seam artifacts on background & playfield edges
             app->enhancementConfig.s2dex.fixBilerpMismatch = true;
             app->enhancementConfig.rect.fixRectLR = true;
+
+            const auto& st = tnt::settings();
+            printf("[gfx] RT64 configured: Antialiasing=%s, Filtering=%s, Upscale2D=%s\n",
+                   st.antialiasing.c_str(), st.filtering.c_str(), st.upscale_2d.c_str());
 
             uint32_t thread_id = 0;
 #ifdef _WIN32
