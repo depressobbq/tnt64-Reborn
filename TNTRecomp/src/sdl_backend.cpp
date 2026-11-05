@@ -440,6 +440,8 @@ namespace {
             else if (a == "--widescreen") cfg.ar_option = AspectRatio::Expand;
             else if (a == "--display-refresh") cfg.rr_option = RefreshRate::Display;
             else if (a == "--developer") cfg.developer_mode = true;
+            else if (a == "--dump-textures") tnt::settings().dump_textures = true;
+            else if ((a == "--texture-pack" || a == "--textures") && i + 1 < argc) tnt::settings().texture_pack = argv[++i];
         }
         set_graphics_config(cfg);
     }

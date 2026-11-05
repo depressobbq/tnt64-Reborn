@@ -7,7 +7,7 @@
 
 *The New Tetris: Reborn* is an enhanced native PC port of *The New Tetris* (N64).
 
-It preserves authentic physics, rotation rules, and piece generation while adding support for high-fidelity soundtrack streaming, custom music playlists, deterministic tournament seed overrides, an expanded live HUD, and automated Discord match logging.
+It preserves authentic physics, rotation rules, and piece generation while adding support for high-fidelity soundtrack streaming, custom music playlists, deterministic tournament seed overrides, an expanded live HUD, HD texture pack loading, and automated Discord match logging.
 
 ---
 
@@ -40,6 +40,11 @@ An integrated scorecard rendered alongside the playfield:
   - **`SILVER LINES`**: Cleared lines containing silver blocks.
 - **Match Seed:** Displays active seed or `RANDOM`.
 
+### 🎨 HD Texture Packs & Texture Dumping
+- **Zero-Overhead Texture Replacement:** Automatically loads high-resolution PNG or DDS textures from `textures/` via RT64's native replacement pipeline with zero performance penalty.
+- **Built-in Texture Dumper:** Dump native N64 textures during gameplay via `dump_textures = true` in `settings.ini` or `--dump-textures` CLI flag.
+- **Processing Tool:** Includes `tools/process_dumped_textures.py` to batch-convert raw TMEM tile dumps into clean PNGs and build the replacement database (`rt64.json`).
+
 ### 🌐 Discord Webhook Integration
 - Automatically submits post-match results to Discord via incoming webhooks.
 - Match summaries include player name, match time, score lines, true lines, LPM, block counts, and seed verification.
@@ -47,7 +52,7 @@ An integrated scorecard rendered alongside the playfield:
 ### 🕹️ Controls & Quality-of-Life
 - **In-Menu Exit Game:** Controller-navigable **`EXIT GAME`** option in the Tournament menu, as well as `ESC` key support.
 - **Local Leaderboard:** Built-in match logging with local HTML rankings and CSV generation (`F4` hotkey).
-- **High Resolution:** RT64 rendering support scaling up to 4K and ultrawide resolutions at 60 FPS.
+- **High Resolution & Anti-Aliasing:** RT64 rendering support scaling up to 4K and ultrawide resolutions with clean MSAA edge handling.
 
 ---
 
@@ -88,6 +93,9 @@ tnt64-recomp/
 ├── custom_tracks/           # (Optional) Any MP3 or WAV tracks for custom rotation
 │   ├── my_favorite_song.mp3
 │   └── ...
+├── textures/                # (Optional) High-resolution replacement textures (.png / .dds)
+│   ├── rt64.json
+│   └── ...
 ├── play.sh                  # Linux launcher script
 └── settings.ini             # Persistent user settings
 ```
@@ -95,6 +103,12 @@ tnt64-recomp/
 ### Adding Soundtrack & Custom Music
 1. **Soundtrack:** Place MP3 or WAV files into the `soundtrack/` folder. The game automatically matches track names (e.g. `morocco`, `dvie`, `polyasia`, `floppy`, `pyramid`, `giali`, `thread6`, `haluci`, `mayan`, `greek`, `egypt`, `celtic`, `africa`, `japan`, `kalinka`, `title`).
 2. **Custom Tracks:** Place any MP3 or WAV files into `custom_tracks/`. In the in-game Audio Menu, select **`CUSTOM.`** to play from your folder, or set music to **`RANDOM`** to rotate continuously through all soundtrack and custom songs.
+
+### Using HD Textures & Dumping
+1. **Dump Textures:** Run `./play.sh --dump-textures` (or set `dump_textures = true` in `settings.ini`). The game will save all textures encountered into `dumped_textures/`.
+2. **Decode to PNG:** Run `python3 tools/process_dumped_textures.py` to extract all tiles into clean PNG images and generate `textures/rt64.json`.
+3. **Customize:** Edit or AI-upscale any textures in `textures/`.
+4. **Play:** Start the game normally. Reborn will automatically load your replacement textures on boot.
 
 ---
 
@@ -139,6 +153,8 @@ filtering = pixel_scaling
 upscale_2d = scaled_only
 aspect_ratio = original
 show_fps = false
+dump_textures = false
+texture_pack = ""
 
 [audio]
 volume = 80

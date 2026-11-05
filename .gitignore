@@ -20,3 +20,9 @@ settings.ini
 # Music audio files (folders and READMEs are tracked)
 *.mp3
 *.wav
+
+# Texture dumping and replacement packs
+dumped_textures/
+textures/*
+!textures/.gitkeep
+!textures/README.md

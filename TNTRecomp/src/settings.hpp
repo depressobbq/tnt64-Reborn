@@ -40,6 +40,8 @@ namespace tnt {
 #endif
         bool developer_mode = false;
         bool dump_backgrounds = false;
+        bool dump_textures = false;
+        std::string texture_pack = "";
         // [audio]
         int volume = 100;                      // percent
         int audio_latency = 2;                 // frames of extra audio kept queued

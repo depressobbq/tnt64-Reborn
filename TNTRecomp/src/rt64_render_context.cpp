@@ -10,6 +10,11 @@
 #include <vector>
 
 #include "hle/rt64_application.h"
+#include "hle/rt64_state.h"
+#include "render/rt64_texture_cache.h"
+#include <filesystem>
+
+namespace tnt { std::filesystem::path data_folder(); }
 #include "ultramodern/ultramodern.hpp"
 #include "ultramodern/config.hpp"
 #include "ultramodern/renderer_context.hpp"
@@ -245,6 +250,25 @@ namespace tnt {
                 return;
             }
             app->setFullScreen(cfg.wm_option == ultramodern::renderer::WindowMode::Fullscreen);
+
+            if (st.dump_textures) {
+                std::filesystem::path dump_dir = tnt::data_folder().parent_path() / "dumped_textures";
+                std::error_code ec;
+                std::filesystem::create_directories(dump_dir, ec);
+                app->state->dumpingTexturesDirectory = dump_dir;
+                printf("[gfx] Texture dumping active: %s\n", dump_dir.string().c_str());
+            }
+
+            std::filesystem::path tex_dir = st.texture_pack.empty()
+                ? (tnt::data_folder().parent_path() / "textures")
+                : std::filesystem::path(st.texture_pack);
+            if (std::filesystem::exists(tex_dir)) {
+                if (app->textureCache->loadReplacementDirectory(RT64::ReplacementDirectory(tex_dir))) {
+                    printf("[gfx] Loaded replacement texture directory: %s\n", tex_dir.string().c_str());
+                } else {
+                    printf("[gfx] Could not load replacement texture directory: %s\n", tex_dir.string().c_str());
+                }
+            }
         }
 
         ~RT64Context() override = default;
