@@ -99,9 +99,12 @@ def assemble_sheets(dumped_dir, output_dir):
     sheets_dir = os.path.join(output_dir, "sheets")
     spritesheets_dir = os.path.join(output_dir, "spritesheets")
     standalone_dir = os.path.join(output_dir, "standalone")
-    os.makedirs(sheets_dir, exist_ok=True)
-    os.makedirs(spritesheets_dir, exist_ok=True)
-    os.makedirs(standalone_dir, exist_ok=True)
+
+    # Clean existing destination directories to ensure no stale files remain
+    for d in [sheets_dir, spritesheets_dir, standalone_dir]:
+        if os.path.exists(d):
+            shutil.rmtree(d)
+        os.makedirs(d, exist_ok=True)
 
     # Group textures by: (address, width, fmt, siz, pal_hash)
     groups = defaultdict(list)
@@ -132,7 +135,17 @@ def assemble_sheets(dumped_dir, output_dir):
         unique_ys = set(s["ult"] for s in slices)
 
         # 1. Spatial composite sheet (sliced background, playfield, or large panel)
+        # Check vertical coverage to differentiate continuous artwork from isolated font glyphs
+        is_composite = False
         if addr != 0 and len(slices) > 1 and len(unique_ys) > 1:
+            max_y = max(s["ult"] + s["height"] for s in slices)
+            total_slice_h = sum(s["height"] for s in slices)
+            coverage = total_slice_h / float(max_y) if max_y > 0 else 0
+            # Slices must cover at least 65% of the canvas height to be considered a continuous image
+            if coverage >= 0.65:
+                is_composite = True
+
+        if is_composite:
             sheet_count += 1
             max_x = max(s["uls"] + s["width"] for s in slices)
             max_y = max(s["ult"] + s["height"] for s in slices)
@@ -195,7 +208,7 @@ def assemble_sheets(dumped_dir, output_dir):
                 "slices": slice_records
             }
 
-        # 3. Standalone textures
+        # 3. Standalone textures (including isolated glyphs from sparse tables)
         else:
             for s in slices:
                 standalone_count += 1
@@ -214,10 +227,10 @@ def assemble_sheets(dumped_dir, output_dir):
 
     print("\n" + "=" * 60)
     print(" [✓] Texture Assembly Complete!")
-    print(f" - Composite Sheets Assembled:    {sheet_count} (in 'sheets/')")
+    print(f" - Continuous Artwork Sheets:     {sheet_count} (in 'sheets/')")
     print(f" - Animation Strips Assembled:     {sprite_count} (in 'spritesheets/')")
     print(f" - Standalone Textures Copied:    {standalone_count} (in 'standalone/')")
-    print(f" - Slices Seamlessly Unified:     {total_slices_assembled} of {len(entries)}")
+    print(f" - Slices Unified into Sheets:    {total_slices_assembled} of {len(entries)}")
     print(f" - Manifest saved to:             '{manifest_path}'")
     print("=" * 60 + "\n")
     return 0
@@ -254,7 +267,6 @@ def split_sheets(assembled_dir, output_dir, manifest_path=None):
     print(f"[*] Processing {len(all_sheets)} composite/spritesheet entries...")
 
     for sheet_name, sheet_info in all_sheets.items():
-        # Find sheet image in assembled_dir
         rel_path = sheet_info.get("relative_path", sheet_name)
         candidate_paths = [
             os.path.join(assembled_dir, rel_path),
@@ -270,7 +282,6 @@ def split_sheets(assembled_dir, output_dir, manifest_path=None):
                 break
 
         if not found_path:
-            # Upscaled sheet not supplied; skip
             continue
 
         orig_w = sheet_info["width"]
@@ -287,14 +298,13 @@ def split_sheets(assembled_dir, output_dir, manifest_path=None):
 
         for slice_rec in sheet_info.get("slices", []):
             h_name = slice_rec["hash"]
-            box = slice_rec["box"]  # [x, y, w, h]
+            box = slice_rec["box"]
 
             crop_x1 = int(round(box[0] * scale_x))
             crop_y1 = int(round(box[1] * scale_y))
             crop_x2 = int(round((box[0] + box[2]) * scale_x))
             crop_y2 = int(round((box[1] + box[3]) * scale_y))
 
-            # Clamp boundaries
             crop_x1 = max(0, min(curr_w, crop_x1))
             crop_y1 = max(0, min(curr_h, crop_y1))
             crop_x2 = max(crop_x1 + 1, min(curr_w, crop_x2))
