@@ -1,0 +1,173 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows x64
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC Dev Command Prompt (clang-cl)
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup Ninja
+        uses: ashutoshvarma/setup-ninja@master
+
+      - name: Setup N64ModernRuntime
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File runtime\setup_runtime.ps1
+
+      - name: Setup RT64
+        shell: pwsh
+        run: |
+          $rt64 = "TNTRecomp\lib\rt64"
+          if (-not (Test-Path "$rt64\CMakeLists.txt")) {
+              git clone https://github.com/rt64/rt64 $rt64
+              git -C $rt64 checkout 23cab603c4f9f4a8b369b38e036f1aa484603878
+              git -C $rt64 submodule update --init --recursive
+          }
+
+      - name: Configure CMake (Windows)
+        run: |
+          cmake -B build -S TNTRecomp -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
+
+      - name: Compile TNTRecompiled (Windows)
+        run: |
+          cmake --build build --config Release
+
+      - name: Package Windows Release
+        shell: pwsh
+        run: |
+          $pkg = "TNT-Reborn-Windows-x64"
+          New-Item -ItemType Directory -Path $pkg | Out-Null
+          
+          # Find and copy executable
+          if (Test-Path "build\TNTRecompiled.exe") {
+              Copy-Item "build\TNTRecompiled.exe" "$pkg\"
+          } else {
+              $exe = Get-ChildItem -Path "build" -Filter "TNTRecompiled.exe" -Recurse | Select-Object -First 1
+              Copy-Item $exe.FullName "$pkg\"
+          }
+
+          # Copy required DLLs (prefer build dir, fallback to RT64 contrib)
+          if (Test-Path "build\SDL2.dll") {
+              Copy-Item "build\SDL2.dll" "$pkg\"
+          } else {
+              Copy-Item "TNTRecomp\lib\rt64\src\contrib\mupen64plus-win32-deps\SDL2-2.26.3\lib\x64\SDL2.dll" "$pkg\"
+          }
+
+          if (Test-Path "build\dxcompiler.dll") {
+              Copy-Item "build\dxcompiler.dll" "$pkg\"
+          } else {
+              Copy-Item "TNTRecomp\lib\rt64\src\contrib\dxc\bin\x64\dxcompiler.dll" "$pkg\"
+          }
+
+          if (Test-Path "build\dxil.dll") {
+              Copy-Item "build\dxil.dll" "$pkg\"
+          } else {
+              Copy-Item "TNTRecomp\lib\rt64\src\contrib\dxc\bin\x64\dxil.dll" "$pkg\"
+          }
+
+          # Copy assets and configs
+          if (Test-Path "settings.ini") { Copy-Item "settings.ini" "$pkg\" }
+          if (Test-Path "textures") { Copy-Item -Recurse "textures" "$pkg\textures" }
+          if (Test-Path "soundtrack") { Copy-Item -Recurse "soundtrack" "$pkg\soundtrack" }
+          if (Test-Path "custom_tracks") { Copy-Item -Recurse "custom_tracks" "$pkg\custom_tracks" }
+          if (Test-Path "README.md") { Copy-Item "README.md" "$pkg\" }
+          if (Test-Path "play.bat") { Copy-Item "play.bat" "$pkg\play.bat" }
+
+          Compress-Archive -Path "$pkg\*" -DestinationPath "$pkg.zip"
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TNT-Reborn-Windows-x64
+          path: TNT-Reborn-Windows-x64.zip
+
+  build-linux:
+    name: Build Linux x64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev ninja-build clang patch libgtk-3-dev
+
+      - name: Setup N64ModernRuntime
+        run: |
+          chmod +x runtime/setup_runtime.sh
+          ./runtime/setup_runtime.sh
+
+      - name: Setup RT64
+        run: |
+          git clone https://github.com/rt64/rt64 TNTRecomp/lib/rt64
+          git -C TNTRecomp/lib/rt64 checkout 23cab603c4f9f4a8b369b38e036f1aa484603878
+          git -C TNTRecomp/lib/rt64 submodule update --init --recursive
+
+      - name: Configure CMake (Linux)
+        run: |
+          cmake -B build -S TNTRecomp -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+
+      - name: Compile TNTRecompiled (Linux)
+        run: |
+          cmake --build build --config Release
+
+      - name: Package Linux Release
+        run: |
+          mkdir -p TNT-Reborn-Linux-x64
+          cp build/TNTRecompiled TNT-Reborn-Linux-x64/
+          chmod +x play.sh
+          cp play.sh TNT-Reborn-Linux-x64/
+          [ -f settings.ini ] && cp settings.ini TNT-Reborn-Linux-x64/
+          [ -d textures ] && cp -r textures TNT-Reborn-Linux-x64/
+          [ -d soundtrack ] && cp -r soundtrack TNT-Reborn-Linux-x64/
+          [ -d custom_tracks ] && cp -r custom_tracks TNT-Reborn-Linux-x64/
+          [ -f README.md ] && cp README.md TNT-Reborn-Linux-x64/
+          tar -czvf TNT-Reborn-Linux-x64.tar.gz -C TNT-Reborn-Linux-x64 .
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TNT-Reborn-Linux-x64
+          path: TNT-Reborn-Linux-x64.tar.gz
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: TNT-Reborn-Windows-x64
+
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: TNT-Reborn-Linux-x64
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            TNT-Reborn-Windows-x64.zip
+            TNT-Reborn-Linux-x64.tar.gz
+          tag_name: ${{ github.ref_name }}
+          name: "The New Tetris: Reborn ${{ github.ref_name }}"
+          draft: false
+          prerelease: true
+          generate_release_notes: true
