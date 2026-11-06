@@ -1521,7 +1521,9 @@ L_80084E74:
     if (MEM_BU(ctx->r29, 0X2B) == 1) {
         ctx->r4 = MEM_W(ctx->r29, 0X20);
         if (tnt_on_play_music(rdram, ctx)) {
-            goto L_80084F70;
+            ctx->r31 = MEM_W(ctx->r29, 0X14);
+            ctx->r29 = ADD32(ctx->r29, 0X20);
+            return;
         }
     }
     // 0x80084EA0: lui         $t5, 0x800E

@@ -22,7 +22,7 @@ namespace {
     uint32_t game_rate = 48000, device_rate = 48000;
     std::mutex mutex;
     bool use_stream = true;
-    uint64_t headroom_vis = 2; // settings.ini [audio] audio_latency, or TNT_AUDIO_HEADROOM=<VIs>
+    uint64_t headroom_vis = 4; // settings.ini [audio] audio_latency, or TNT_AUDIO_HEADROOM=<VIs> (default 4 VIs ~66ms for stable WASAPI/DirectSound on Windows)
     std::atomic<float> volume{ 1.0f };
     void apply_volume(float* f, size_t n) {
         float v = volume.load();
@@ -63,7 +63,12 @@ void tnt::audio::open() {
         return;
     }
     SDL_AudioSpec want{}, have{};
-    want.freq = 48000; want.format = AUDIO_F32SYS; want.channels = device_channels; want.samples = 512;
+    want.freq = 48000; want.format = AUDIO_F32SYS; want.channels = device_channels;
+#ifdef _WIN32
+    want.samples = 1024; // 1024 samples (~21ms buffer) avoids WASAPI scheduler underruns on Windows
+#else
+    want.samples = 512;
+#endif
     device = SDL_OpenAudioDevice(nullptr, 0, &want, &have, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
     if (!device) {
         fprintf(stderr, "[audio] no audio device: %s (continuing without sound)\n", SDL_GetError());
