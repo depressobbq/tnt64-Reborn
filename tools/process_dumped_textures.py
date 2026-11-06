@@ -3,6 +3,7 @@
 N64 / RT64 Dumped Texture Decoder
 
 Batch-converts textures dumped by TNTRecomp (--dump-textures) into clean PNG images.
+Accounts for N64Recomp little-endian word storage (byte index ^ 3).
 By default, extracts textures to 'dumped_textures/png/'.
 """
 
@@ -26,6 +27,18 @@ G_IM_SIZ_8b   = 1
 G_IM_SIZ_16b  = 2
 G_IM_SIZ_32b  = 3
 
+def unswap_rdram(data):
+    """
+    N64Recomp stores 32-bit big-endian words in little-endian host RAM.
+    Each byte at logical offset i is located at physical byte index (i ^ 3).
+    """
+    n = len(data)
+    b = bytearray(n)
+    for i in range(n):
+        swapped_i = i ^ 3
+        b[i] = data[swapped_i] if swapped_i < n else data[i]
+    return bytes(b)
+
 def rgba16_to_tuple(val):
     r = ((val >> 11) & 0x1F)
     g = ((val >> 6) & 0x1F)
@@ -37,7 +50,7 @@ def rgba16_to_tuple(val):
     return (r, g, b, a)
 
 def decode_from_rice(base_path, width, height):
-    """Decodes texture linearly from RDRAM dump files."""
+    """Decodes texture linearly from RDRAM dump files with recomp unswapping."""
     rice_json_path = base_path + ".rice.json"
     rice_rdram_path = base_path + ".rice.rdram"
 
@@ -48,10 +61,11 @@ def decode_from_rice(base_path, width, height):
         with open(rice_json_path, "r") as f:
             rinfo = json.load(f)
         with open(rice_rdram_path, "rb") as f:
-            rdram = f.read()
+            raw_rdram = f.read()
     except Exception:
         return None
 
+    rdram = unswap_rdram(raw_rdram)
     tex_info = rinfo.get("texture", {})
     fmt = tex_info.get("fmt", G_IM_FMT_RGBA)
     siz = tex_info.get("siz", G_IM_SIZ_16b)
@@ -61,9 +75,10 @@ def decode_from_rice(base_path, width, height):
     if os.path.exists(pal_rdram_path):
         try:
             with open(pal_rdram_path, "rb") as f:
-                pdata = f.read()
-            for i in range(len(pdata) // 2):
-                val = struct.unpack(">H", pdata[i*2:(i+1)*2])[0]
+                raw_pal = f.read()
+            pal_data = unswap_rdram(raw_pal)
+            for i in range(len(pal_data) // 2):
+                val = struct.unpack(">H", pal_data[i*2:(i+1)*2])[0]
                 palette.append(rgba16_to_tuple(val))
         except Exception:
             pass
