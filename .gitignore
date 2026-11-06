@@ -21,8 +21,5 @@ settings.ini
 *.mp3
 *.wav
 
-# Texture dumping and replacement packs
+# Texture dumping and temporary assemblies
 dumped_textures/
-textures/*
-!textures/.gitkeep
-!textures/README.md

@@ -212,13 +212,14 @@ def assemble_sheets(dumped_dir, output_dir):
         else:
             for s in slices:
                 standalone_count += 1
-                out_path = os.path.join(standalone_dir, f"{s['hash']}.png")
+                clean_hash = s["hash"].split(".")[0]
+                out_path = os.path.join(standalone_dir, f"{clean_hash}.png")
                 shutil.copy2(s["png_path"], out_path)
                 manifest["standalone"].append({
                     "hash": s["hash"],
                     "width": s["width"],
                     "height": s["height"],
-                    "relative_path": os.path.join("standalone", f"{s['hash']}.png")
+                    "relative_path": os.path.join("standalone", f"{clean_hash}.png")
                 })
 
     manifest_path = os.path.join(output_dir, "assembly_manifest.json")
@@ -313,12 +314,9 @@ def split_sheets(assembled_dir, output_dir, manifest_path=None):
 
             slice_img = upscaled_img.crop((crop_x1, crop_y1, crop_x2, crop_y2))
 
-            # Save as clean_hash.png and h_name.png for complete RT64 compatibility
+            # Save clean replacement image
             out_png = os.path.join(output_dir, f"{clean_hash}.png")
             slice_img.save(out_png)
-            if clean_hash != h_name:
-                out_png_v = os.path.join(output_dir, f"{h_name}.png")
-                slice_img.save(out_png_v)
 
             rt64_hashes.append(clean_hash)
             slices_extracted += 1
@@ -327,12 +325,12 @@ def split_sheets(assembled_dir, output_dir, manifest_path=None):
     for s_info in manifest.get("standalone", []):
         h_name = s_info["hash"]
         clean_hash = h_name.split(".")[0]
-        rel_path = s_info.get("relative_path", f"{h_name}.png")
+        rel_path = s_info.get("relative_path", f"{clean_hash}.png")
         candidate_paths = [
             os.path.join(assembled_dir, rel_path),
-            os.path.join(assembled_dir, "standalone", f"{h_name}.png"),
-            os.path.join(assembled_dir, f"{h_name}.png"),
-            os.path.join(assembled_dir, f"{clean_hash}.png")
+            os.path.join(assembled_dir, "standalone", f"{clean_hash}.png"),
+            os.path.join(assembled_dir, f"{clean_hash}.png"),
+            os.path.join(assembled_dir, f"{h_name}.png")
         ]
 
         found_path = None
@@ -344,9 +342,6 @@ def split_sheets(assembled_dir, output_dir, manifest_path=None):
         if found_path:
             out_png = os.path.join(output_dir, f"{clean_hash}.png")
             shutil.copy2(found_path, out_png)
-            if clean_hash != h_name:
-                out_png_v = os.path.join(output_dir, f"{h_name}.png")
-                shutil.copy2(found_path, out_png_v)
 
             rt64_hashes.append(clean_hash)
             standalone_copied += 1
