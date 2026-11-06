@@ -8,6 +8,11 @@
 #include "tnt_game.hpp"
 #include "settings.hpp"
 #include "librecomp/rsp.hpp"
+#include "SDL.h"
+
+#ifndef TNT_HEADLESS
+#include "gui/rt64_file_dialog.h"
+#endif
 
 extern "C" void recomp_entrypoint(uint8_t* rdram, recomp_context* ctx);
 gpr get_entrypoint_address();                       // RecompiledFuncs/lookup.cpp
@@ -78,12 +83,12 @@ static bool ends_with_rom_ext(const std::string& s) {
 static const char* rom_error_text(recomp::RomValidationError e) {
     switch (e) {
         case recomp::RomValidationError::Good: return "ok";
-        case recomp::RomValidationError::FailedToOpen: return "could not open the file";
-        case recomp::RomValidationError::NotARom: return "not an N64 ROM";
-        case recomp::RomValidationError::IncorrectRom: return "this is not The New Tetris (USA)";
-        case recomp::RomValidationError::NotYet: return "unsupported ROM";
-        case recomp::RomValidationError::IncorrectVersion: return "wrong revision; the USA version is required (MD5 7a28179b00734c9aa0f0609fafaafd5f)";
-        default: return "unknown error";
+        case recomp::RomValidationError::FailedToOpen: return "Could not open the file.";
+        case recomp::RomValidationError::NotARom: return "The selected file is not an N64 ROM.";
+        case recomp::RomValidationError::IncorrectRom: return "This is not The New Tetris.";
+        case recomp::RomValidationError::NotYet: return "Unsupported ROM version.";
+        case recomp::RomValidationError::IncorrectVersion: return "Wrong revision; the USA 1.0 version is required (MD5: 7a28179b00734c9aa0f0609fafaafd5f).";
+        default: return "Unknown error validating ROM.";
     }
 }
 
@@ -125,8 +130,7 @@ int main(int argc, char** argv) {
     recomp::register_game(tnt_entry);
     tnt_register_overlays();
 
-    // Usage: TNTRecompiled [path/to/rom.z64]
-    // A ROM path is validated and stored in the data folder; after that the game starts with no arguments.
+    // 1. Process CLI ROM argument if provided
     std::vector<char*> args{ argv, argv + argc };
     std::string rom_arg;
     for (int i = 1; i < argc; i++) {
@@ -136,12 +140,16 @@ int main(int argc, char** argv) {
         auto err = recomp::select_rom(rom_arg, tnt_entry.game_id);
         if (err != recomp::RomValidationError::Good) {
             fprintf(stderr, "ROM rejected: %s (%s)\n", rom_arg.c_str(), rom_error_text(err));
+#ifndef TNT_HEADLESS
+            std::string msg = "ROM rejected:\n" + rom_arg + "\n\n" + rom_error_text(err);
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Invalid ROM", msg.c_str(), nullptr);
+#endif
             return EXIT_FAILURE;
         }
         printf("ROM accepted and stored in %s\n", tnt::data_folder().string().c_str());
     }
+
 #if defined(__vita__)
-    // No command line on the Vita: the first time, look for a ROM in the app folder.
     if (rom_arg.empty()) rom_arg = tnt_vita_find_rom();
     if (!rom_arg.empty()) {
         auto err = recomp::select_rom(rom_arg, tnt_entry.game_id);
@@ -149,6 +157,85 @@ int main(int argc, char** argv) {
         else tnt_vita_set_error(std::string("ROM rejected: ") + rom_arg + " (" + rom_error_text(err) + ")");
     }
 #endif
+
+    // 2. Check if the game already has a valid stored ROM in tnt_data
+    recomp::check_all_stored_roms();
+    bool has_valid_rom = recomp::is_rom_valid(tnt_entry.game_id);
+
+    // 3. If not stored yet, look for baserom.us.z64 in current or parent folders
+    if (!has_valid_rom) {
+        for (const auto& candidate : { std::filesystem::path("baserom.us.z64"),
+                                       std::filesystem::path("../baserom.us.z64"),
+                                       std::filesystem::path("../../baserom.us.z64") }) {
+            if (std::filesystem::exists(candidate)) {
+                auto err = recomp::select_rom(candidate, tnt_entry.game_id);
+                if (err == recomp::RomValidationError::Good) {
+                    recomp::check_all_stored_roms();
+                    has_valid_rom = recomp::is_rom_valid(tnt_entry.game_id);
+                    if (has_valid_rom) {
+                        printf("Automatically imported %s into %s\n", candidate.string().c_str(), tnt::data_folder().string().c_str());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. If still no valid ROM, pop up a native file picker to select and verify it
+    if (!has_valid_rom) {
+#ifndef TNT_HEADLESS
+        RT64::FileDialog::initialize();
+        while (!has_valid_rom) {
+            std::vector<RT64::FileFilter> filters = {
+                RT64::FileFilter("N64 ROMs (*.z64, *.n64, *.v64)", "z64,n64,v64"),
+                RT64::FileFilter("All Files (*.*)", "*")
+            };
+            std::filesystem::path picked = RT64::FileDialog::getOpenFilename(filters);
+            if (picked.empty()) {
+                // User cancelled the file picker
+                SDL_ShowSimpleMessageBox(
+                    SDL_MESSAGEBOX_WARNING,
+                    "The New Tetris: Reborn",
+                    "No ROM was selected.\n\nA valid USA 1.0 N64 ROM is required to run the game.\nThe game will now exit.",
+                    nullptr
+                );
+                RT64::FileDialog::finish();
+                return EXIT_FAILURE;
+            }
+
+            auto err = recomp::select_rom(picked, tnt_entry.game_id);
+            if (err == recomp::RomValidationError::Good) {
+                recomp::check_all_stored_roms();
+                has_valid_rom = recomp::is_rom_valid(tnt_entry.game_id);
+                if (has_valid_rom) {
+                    printf("ROM accepted and stored in %s\n", tnt::data_folder().string().c_str());
+                    SDL_ShowSimpleMessageBox(
+                        SDL_MESSAGEBOX_INFORMATION,
+                        "The New Tetris: Reborn",
+                        "ROM successfully verified and installed!\n\nStarting game...",
+                        nullptr
+                    );
+                    break;
+                }
+            }
+
+            std::string msg = "ROM verification failed:\n\n";
+            msg += rom_error_text(err);
+            msg += "\n\nPlease select the USA 1.0 ROM of The New Tetris (MD5: 7a28179b00734c9aa0f0609fafaafd5f).";
+            SDL_ShowSimpleMessageBox(
+                SDL_MESSAGEBOX_ERROR,
+                "The New Tetris: Reborn - Invalid ROM",
+                msg.c_str(),
+                nullptr
+            );
+        }
+        RT64::FileDialog::finish();
+#else
+        fprintf(stderr, "No valid ROM found for The New Tetris (USA 1.0). Please specify a ROM file.\n");
+        return EXIT_FAILURE;
+#endif
+    }
+
     // Auto-start the game unless the caller passed --game themselves.
     static char game_flag[] = "--game";
     static char game_name[] = "tnt";

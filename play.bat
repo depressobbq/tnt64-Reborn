@@ -11,15 +11,9 @@ if not exist "TNTRecompiled.exe" (
 
 if not exist "TNTRecompiled.exe" (
     echo [!] TNTRecompiled.exe not found!
-    echo Please build the game or extract the release zip.
+    echo Please make sure all files from the release zip are extracted.
     pause
     exit /b 1
-)
-
-if not exist "baserom.us.z64" if not exist "tnt_data\tnt.n64.us.1.0.z64" (
-    echo [!] Notice: 'baserom.us.z64' was not found in this folder.
-    echo If this is your first time playing, please copy your USA 1.0 ROM here as 'baserom.us.z64'.
-    echo.
 )
 
 if exist "baserom.us.z64" (
