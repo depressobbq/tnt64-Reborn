@@ -3,7 +3,7 @@
 N64 / RT64 Dumped Texture Decoder
 
 Batch-converts textures dumped by TNTRecomp (--dump-textures) into clean PNG images.
-Accounts for N64Recomp little-endian word storage (byte index ^ 3).
+Accounts for N64Recomp little-endian word storage (byte index ^ 3) and RDP tile sampling format.
 By default, extracts textures to 'dumped_textures/png/'.
 """
 
@@ -44,31 +44,26 @@ def rgba16_to_tuple(val):
     g = ((val >> 6) & 0x1F)
     b = ((val >> 1) & 0x1F)
     a = 255 if (val & 1) else 0
-    r = (r << 3) | (r >> 2)
-    g = (g << 3) | (g >> 2)
-    b = (b << 3) | (b >> 2)
-    return (r, g, b, a)
+    return ((r << 3) | (r >> 2), (g << 3) | (g >> 2), (b << 3) | (b >> 2), a)
 
-def decode_from_rice(base_path, width, height):
-    """Decodes texture linearly from RDRAM dump files with recomp unswapping."""
-    rice_json_path = base_path + ".rice.json"
+def decode_texture(base_path, tile_info):
+    """Decodes texture linearly using RDP tile parameters and unswapped RDRAM/palette."""
     rice_rdram_path = base_path + ".rice.rdram"
-
-    if not (os.path.exists(rice_json_path) and os.path.exists(rice_rdram_path)):
+    if not os.path.exists(rice_rdram_path):
         return None
 
     try:
-        with open(rice_json_path, "r") as f:
-            rinfo = json.load(f)
         with open(rice_rdram_path, "rb") as f:
             raw_rdram = f.read()
     except Exception:
         return None
 
     rdram = unswap_rdram(raw_rdram)
-    tex_info = rinfo.get("texture", {})
-    fmt = tex_info.get("fmt", G_IM_FMT_RGBA)
-    siz = tex_info.get("siz", G_IM_SIZ_16b)
+    width = tile_info.get("width", 32)
+    height = tile_info.get("height", 32)
+    tile = tile_info.get("tile", {})
+    fmt = tile.get("fmt", G_IM_FMT_RGBA)
+    siz = tile.get("siz", G_IM_SIZ_16b)
 
     palette = []
     pal_rdram_path = base_path + ".rice.palette.rdram"
@@ -86,25 +81,7 @@ def decode_from_rice(base_path, width, height):
     img = Image.new("RGBA", (width, height))
     pix = img.load()
 
-    if fmt == G_IM_FMT_CI:
-        if siz == G_IM_SIZ_8b:
-            for y in range(height):
-                for x in range(width):
-                    idx = y * width + x
-                    if idx < len(rdram):
-                        p_idx = rdram[idx]
-                        if p_idx < len(palette):
-                            pix[x, y] = palette[p_idx]
-        elif siz == G_IM_SIZ_4b:
-            for y in range(height):
-                for x in range(width):
-                    byte_idx = (y * width + x) >> 1
-                    if byte_idx < len(rdram):
-                        b = rdram[byte_idx]
-                        p_idx = (b & 0xF) if (x & 1) else ((b >> 4) & 0xF)
-                        if p_idx < len(palette):
-                            pix[x, y] = palette[p_idx]
-    elif fmt == G_IM_FMT_RGBA:
+    if fmt == G_IM_FMT_RGBA:
         if siz == G_IM_SIZ_16b:
             for y in range(height):
                 for x in range(width):
@@ -118,17 +95,30 @@ def decode_from_rice(base_path, width, height):
                     idx = (y * width + x) * 4
                     if idx + 3 < len(rdram):
                         pix[x, y] = (rdram[idx], rdram[idx+1], rdram[idx+2], rdram[idx+3])
-    elif fmt == G_IM_FMT_IA:
-        if siz == G_IM_SIZ_16b:
+    elif fmt == G_IM_FMT_CI:
+        if siz == G_IM_SIZ_8b:
             for y in range(height):
                 for x in range(width):
-                    idx = (y * width + x) * 2
-                    if idx + 1 < len(rdram):
-                        val = struct.unpack(">H", rdram[idx:idx+2])[0]
-                        i = (val >> 8) & 0xFF
-                        a = val & 0xFF
-                        pix[x, y] = (i, i, i, a)
-        elif siz == G_IM_SIZ_8b:
+                    idx = y * width + x
+                    if idx < len(rdram):
+                        p = rdram[idx]
+                        if p < len(palette):
+                            pix[x, y] = palette[p]
+                        else:
+                            pix[x, y] = (p, p, p, 255)
+        elif siz == G_IM_SIZ_4b:
+            for y in range(height):
+                for x in range(width):
+                    byte_idx = (y * width + x) >> 1
+                    if byte_idx < len(rdram):
+                        b = rdram[byte_idx]
+                        p = (b & 0xF) if (x & 1) else ((b >> 4) & 0xF)
+                        if p < len(palette):
+                            pix[x, y] = palette[p]
+                        else:
+                            pix[x, y] = (p * 17, p * 17, p * 17, 255)
+    elif fmt == G_IM_FMT_IA:
+        if siz == G_IM_SIZ_8b:
             for y in range(height):
                 for x in range(width):
                     idx = y * width + x
@@ -136,6 +126,15 @@ def decode_from_rice(base_path, width, height):
                         b = rdram[idx]
                         i = ((b >> 4) & 0xF) * 17
                         a = (b & 0xF) * 17
+                        pix[x, y] = (i, i, i, a)
+        elif siz == G_IM_SIZ_16b:
+            for y in range(height):
+                for x in range(width):
+                    idx = (y * width + x) * 2
+                    if idx + 1 < len(rdram):
+                        val = struct.unpack(">H", rdram[idx:idx+2])[0]
+                        i = (val >> 8) & 0xFF
+                        a = val & 0xFF
                         pix[x, y] = (i, i, i, a)
         elif siz == G_IM_SIZ_4b:
             for y in range(height):
@@ -153,8 +152,8 @@ def decode_from_rice(base_path, width, height):
                 for x in range(width):
                     idx = y * width + x
                     if idx < len(rdram):
-                        i = rdram[idx]
-                        pix[x, y] = (i, i, i, 255)
+                        b = rdram[idx]
+                        pix[x, y] = (b, b, b, 255)
         elif siz == G_IM_SIZ_4b:
             for y in range(height):
                 for x in range(width):
@@ -209,7 +208,7 @@ def main():
             continue
 
         try:
-            img = decode_from_rice(base_path, width, height)
+            img = decode_texture(base_path, tile_info)
             if img is not None:
                 out_png = os.path.join(args.output_dir, f"{base_name}.png")
                 img.save(out_png)
