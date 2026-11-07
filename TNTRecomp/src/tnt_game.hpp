@@ -20,4 +20,8 @@ namespace tnt {
 
     // Folder holding the stored ROM copy, saves and logs.
     std::filesystem::path data_folder();
+
+    void set_fullscreen(bool fs);
+    bool is_fullscreen();
+    void apply_runtime_gfx_settings();
 }

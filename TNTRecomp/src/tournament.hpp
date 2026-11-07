@@ -3,6 +3,10 @@
 #include <string>
 #include "recomp.h"
 
+namespace tnt {
+    void reset_piece_generator();
+}
+
 namespace tnt::tournament {
     // Current live game stats (updated in real-time)
     struct LiveStats {
@@ -77,4 +81,9 @@ extern "C" {
     void tnt_on_line_cleared(uint8_t* rdram, recomp_context* ctx);
     int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx);
     void tnt_apply_menu_patches(uint8_t* rdram);
+
+    // Dynamic piece generation & filtering
+    uint32_t tnt_on_deal_next_piece(uint8_t* rdram, uint32_t orig_piece);
+    uint32_t tnt_filter_spawn_piece(uint32_t piece);
+    void tnt_reset_piece_generator();
 }

@@ -488,6 +488,10 @@ namespace {
     void message_box(const char* msg) { fprintf(stderr, "[headless] MESSAGE: %s\n", msg); fflush(stderr); }
 }
 
+void tnt::set_fullscreen(bool) {}
+bool tnt::is_fullscreen() { return false; }
+void tnt::apply_runtime_gfx_settings() {}
+
 tnt::Backend tnt::make_backend(int, char**) {
     start_time = std::chrono::steady_clock::now();
 #if defined(__linux__)

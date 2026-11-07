@@ -31,3 +31,11 @@ text = "tnt_on_game_result(rdram, ctx);"
 [[patches.hook]]
 func = "func_800A3550"
 text = "tnt_apply_seed_override(rdram, ctx);"
+# Live piece spawn and preview filter (TNTRecomp/src/tournament.cpp)
+[[patches.hook]]
+func = "func_80067DD8"
+text = "ctx->r4 = tnt_filter_spawn_piece(ctx->r4);"
+
+[[patches.hook]]
+func = "func_8006832C"
+text = "ctx->r5 = tnt_filter_spawn_piece(ctx->r5);"

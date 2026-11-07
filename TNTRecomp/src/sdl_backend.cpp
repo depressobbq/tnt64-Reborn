@@ -281,6 +281,9 @@ namespace {
             fprintf(stderr, "Failed to create window: %s\n", SDL_GetError());
             std::exit(EXIT_FAILURE);
         }
+        if (fullscreen) {
+            SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        }
 #if !defined(_WIN32)
         if (SDL_Surface* icon = SDL_CreateRGBSurfaceWithFormatFrom((void*)tnt_icon_rgba, tnt_icon_size, tnt_icon_size, 32,
                 tnt_icon_size * 4, SDL_PIXELFORMAT_ABGR8888)) { // bytes in memory: R, G, B, A
@@ -301,14 +304,35 @@ namespace {
 #endif
     }
 
-    void toggle_fullscreen() {
-        fullscreen = !fullscreen;
+    void apply_runtime_gfx_settings() {
+        const tnt::Settings& st = tnt::settings();
         auto cfg = ultramodern::renderer::get_graphics_config();
+        std::string aa = st.antialiasing;
+        for (char& c : aa) c = (char)std::tolower((unsigned char)c);
+        cfg.msaa_option = (aa == "2x" || aa == "msaa2") ? ultramodern::renderer::Antialiasing::MSAA2X
+                        : (aa == "4x" || aa == "msaa4") ? ultramodern::renderer::Antialiasing::MSAA4X
+                        : (aa == "8x" || aa == "msaa8") ? ultramodern::renderer::Antialiasing::MSAA8X
+                        : ultramodern::renderer::Antialiasing::None;
         cfg.wm_option = fullscreen ? ultramodern::renderer::WindowMode::Fullscreen : ultramodern::renderer::WindowMode::Windowed;
         ultramodern::renderer::set_graphics_config(cfg);
-#if defined(__linux__)
-        SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-#endif
+        if (window) {
+            SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+        }
+    }
+
+    void set_fullscreen(bool fs) {
+        fullscreen = fs;
+        tnt::settings().fullscreen = fs;
+        apply_runtime_gfx_settings();
+    }
+
+    bool is_fullscreen() {
+        return fullscreen;
+    }
+
+    void toggle_fullscreen() {
+        set_fullscreen(!fullscreen);
+        tnt::save_settings(tnt::settings_path(), tnt::settings());
     }
 
     void report_status() {
@@ -445,6 +469,18 @@ namespace {
         }
         set_graphics_config(cfg);
     }
+}
+
+void tnt::set_fullscreen(bool fs) {
+    ::set_fullscreen(fs);
+}
+
+bool tnt::is_fullscreen() {
+    return ::is_fullscreen();
+}
+
+void tnt::apply_runtime_gfx_settings() {
+    ::apply_runtime_gfx_settings();
 }
 
 tnt::Backend tnt::make_backend(int argc, char** argv) {

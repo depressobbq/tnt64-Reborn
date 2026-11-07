@@ -24,6 +24,11 @@ void tnt_on_line_cleared(uint8_t* rdram, recomp_context* ctx);    // TNTRecomp/s
 int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/tournament.cpp
 void tnt_apply_menu_patches(uint8_t* rdram); // TNTRecomp/src/tournament.cpp
 
+// Dynamic piece generation & filtering
+uint32_t tnt_on_deal_next_piece(uint8_t* rdram, uint32_t orig_piece); // TNTRecomp/src/tournament.cpp
+uint32_t tnt_filter_spawn_piece(uint32_t piece);                      // TNTRecomp/src/tournament.cpp
+void tnt_reset_piece_generator(void);                                 // TNTRecomp/src/tournament.cpp
+
 // Custom audio functions
 int tnt_on_play_music(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/custom_audio.cpp
 int tnt_is_custom_music_playing(void);                       // TNTRecomp/src/custom_audio.cpp

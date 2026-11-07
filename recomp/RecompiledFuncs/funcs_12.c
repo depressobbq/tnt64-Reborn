@@ -1188,6 +1188,7 @@ RECOMP_FUNC void func_80071394(uint8_t* rdram, recomp_context* ctx) {
     ctx->r16 = MEM_W(ctx->r29, 0X18);
     // 0x800713E8: jr          $ra
     // 0x800713EC: addiu       $sp, $sp, 0x28
+    ctx->r2 = tnt_on_deal_next_piece(rdram, ctx->r2);
     ctx->r29 = ADD32(ctx->r29, 0X28);
     return;
     // 0x800713EC: addiu       $sp, $sp, 0x28

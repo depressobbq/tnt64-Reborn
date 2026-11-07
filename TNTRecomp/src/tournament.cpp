@@ -1,3 +1,4 @@
+#include "tnt_game.hpp"
 #include "tournament.hpp"
 #include "settings.hpp"
 #include "custom_audio.hpp"
@@ -8,6 +9,7 @@
 #include <sstream>
 #include <thread>
 #include <atomic>
+#include <mutex>
 #include <algorithm>
 #include <chrono>
 
@@ -260,13 +262,14 @@ extern "C" void tnt_on_pieces_generated(uint8_t* rdram, uint32_t player) {
 
     uint8_t pieces[400];
 
+    // TNT piece constants:
+    // 0: J, 1: L, 2: Z, 3: S, 4: T, 5: I, 6: Square (O)
     if (block_train) {
-        // BlockTraining Mode: ONLY pieces 0 (I), 1 (Square/O), 2 (L), 3 (J), 4 (T)
-        // Strictly excludes 5 (S) and 6 (Z) for pure mono-block (4x4 gold) and silver cube building
+        // BlockTraining Mode: ONLY pieces 0 (J), 1 (L), 4 (T), 5 (I), 6 (Square/O)
+        // Strictly excludes 2 (Z) and 3 (S) for pure mono-block (4x4 gold) and silver cube building
         int idx = 0;
         while (idx < 400) {
-            uint8_t bag[5] = { 0, 1, 2, 3, 4 };
-            // Fisher-Yates shuffle
+            uint8_t bag[5] = { 0, 1, 4, 5, 6 };
             for (int i = 4; i > 0; --i) {
                 int j = next_rand() % (i + 1);
                 std::swap(bag[i], bag[j]);
@@ -289,7 +292,6 @@ extern "C" void tnt_on_pieces_generated(uint8_t* rdram, uint32_t player) {
             }
         }
     } else if (s.piece_ruleset == "nes_1989") {
-        // NES 1989 Tetris rules: roll 0..7. If 7 or == previous, roll 0..6.
         uint8_t prev = 7;
         for (int idx = 0; idx < 400; ++idx) {
             uint32_t roll = next_rand() % 8;
@@ -300,9 +302,8 @@ extern "C" void tnt_on_pieces_generated(uint8_t* rdram, uint32_t player) {
             pieces[idx] = prev;
         }
     } else if (s.piece_ruleset == "tgm") {
-        // Tetris Grand Master (TGM) History: 4-piece history with up to 4 retries
-        uint8_t history[4] = { 6, 6, 5, 5 }; // Z, Z, S, S
-        const uint8_t first_pool[4] = { 0, 2, 3, 4 }; // I, L, J, T (no S/Z/O on opener)
+        uint8_t history[4] = { 2, 2, 3, 3 }; // Z, Z, S, S
+        const uint8_t first_pool[4] = { 0, 1, 4, 5 }; // J, L, T, I (no S, Z, or Square on opener)
         pieces[0] = first_pool[next_rand() % 4];
         history[0] = history[1]; history[1] = history[2]; history[2] = history[3]; history[3] = pieces[0];
 
@@ -317,7 +318,6 @@ extern "C" void tnt_on_pieces_generated(uint8_t* rdram, uint32_t player) {
             history[0] = history[1]; history[1] = history[2]; history[2] = history[3]; history[3] = piece;
         }
     } else if (s.piece_ruleset == "pure_random") {
-        // Pure Uniform Random 0..6
         for (int idx = 0; idx < 400; ++idx) {
             pieces[idx] = static_cast<uint8_t>(next_rand() % 7);
         }
@@ -335,6 +335,135 @@ extern "C" void tnt_on_pieces_generated(uint8_t* rdram, uint32_t player) {
            player,
            pieces[0], pieces[1], pieces[2], pieces[3], pieces[4],
            pieces[5], pieces[6], pieces[7], pieces[8], pieces[9]);
+}
+
+// -------------------------------------------------------------
+// Live Piece Generator & Filter (Marathon / Single-Player & All Modes)
+// -------------------------------------------------------------
+namespace {
+    std::mutex g_piece_mutex;
+    uint32_t g_piece_rng_state = 0x12345678;
+
+    uint32_t next_piece_rand() {
+        g_piece_rng_state = g_piece_rng_state * 1664525u + 1013904223u;
+        return (g_piece_rng_state >> 16);
+    }
+
+    uint8_t g_block_bag[5] = { 0, 1, 4, 5, 6 };
+    int g_block_bag_idx = 5;
+
+    uint8_t g_seven_bag[7] = { 0, 1, 2, 3, 4, 5, 6 };
+    int g_seven_bag_idx = 7;
+
+    uint8_t g_nes_prev_piece = 7;
+
+    uint8_t g_tgm_history[4] = { 2, 2, 3, 3 }; // Z, Z, S, S
+    bool g_tgm_first_piece = true;
+}
+
+extern "C" void tnt_reset_piece_generator(void) {
+    std::lock_guard<std::mutex> lock(g_piece_mutex);
+    const auto& s = tnt::settings();
+    if (s.seeded_run) {
+        g_piece_rng_state = parse_seed_string(s.custom_seed);
+        if (g_piece_rng_state == 0) g_piece_rng_state = 0x12345678;
+    } else {
+        auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        g_piece_rng_state = static_cast<uint32_t>(now ^ (now >> 32));
+    }
+    g_block_bag_idx = 5;
+    g_seven_bag_idx = 7;
+    g_nes_prev_piece = 7;
+    g_tgm_history[0] = 2; g_tgm_history[1] = 2;
+    g_tgm_history[2] = 3; g_tgm_history[3] = 3;
+    g_tgm_first_piece = true;
+}
+
+namespace tnt {
+    void reset_piece_generator() {
+        tnt_reset_piece_generator();
+    }
+}
+
+// Intercepts the next dealt piece from the game randomizer (func_80071394)
+extern "C" uint32_t tnt_on_deal_next_piece(uint8_t* rdram, uint32_t orig_piece) {
+    (void)rdram;
+    std::lock_guard<std::mutex> lock(g_piece_mutex);
+    const auto& s = tnt::settings();
+
+    bool block_train = s.block_training || (s.piece_ruleset == "block_training");
+    if (!block_train && (s.piece_ruleset == "tnt_original" || s.piece_ruleset.empty())) {
+        return orig_piece;
+    }
+
+    if (block_train) {
+        // BlockTraining Mode: ONLY pieces 0 (J), 1 (L), 4 (T), 5 (I), 6 (Square/O)
+        // Strictly excludes 2 (Z) and 3 (S)
+        if (g_block_bag_idx >= 5) {
+            uint8_t pool[5] = { 0, 1, 4, 5, 6 };
+            for (int i = 0; i < 5; ++i) g_block_bag[i] = pool[i];
+            for (int i = 4; i > 0; --i) {
+                int j = next_piece_rand() % (i + 1);
+                std::swap(g_block_bag[i], g_block_bag[j]);
+            }
+            g_block_bag_idx = 0;
+        }
+        uint32_t piece = g_block_bag[g_block_bag_idx++];
+        return piece;
+    } else if (s.piece_ruleset == "7_bag") {
+        if (g_seven_bag_idx >= 7) {
+            for (int i = 0; i < 7; ++i) g_seven_bag[i] = (uint8_t)i;
+            for (int i = 6; i > 0; --i) {
+                int j = next_piece_rand() % (i + 1);
+                std::swap(g_seven_bag[i], g_seven_bag[j]);
+            }
+            g_seven_bag_idx = 0;
+        }
+        return g_seven_bag[g_seven_bag_idx++];
+    } else if (s.piece_ruleset == "nes_1989") {
+        uint32_t roll = next_piece_rand() % 8;
+        if (roll == 7 || roll == g_nes_prev_piece) {
+            roll = next_piece_rand() % 7;
+        }
+        g_nes_prev_piece = static_cast<uint8_t>(roll);
+        return roll;
+    } else if (s.piece_ruleset == "tgm") {
+        uint8_t piece = 0;
+        if (g_tgm_first_piece) {
+            const uint8_t first_pool[4] = { 0, 1, 4, 5 }; // J, L, T, I (no S, Z, or Square on opener)
+            piece = first_pool[next_piece_rand() % 4];
+            g_tgm_first_piece = false;
+        } else {
+            piece = static_cast<uint8_t>(next_piece_rand() % 7);
+            for (int retry = 0; retry < 4; ++retry) {
+                bool in_hist = (piece == g_tgm_history[0] || piece == g_tgm_history[1] ||
+                                piece == g_tgm_history[2] || piece == g_tgm_history[3]);
+                if (!in_hist) break;
+                piece = static_cast<uint8_t>(next_piece_rand() % 7);
+            }
+        }
+        g_tgm_history[0] = g_tgm_history[1];
+        g_tgm_history[1] = g_tgm_history[2];
+        g_tgm_history[2] = g_tgm_history[3];
+        g_tgm_history[3] = piece;
+        return piece;
+    } else if (s.piece_ruleset == "pure_random") {
+        return next_piece_rand() % 7;
+    }
+
+    return orig_piece;
+}
+
+// Failsafe filter on piece spawn / queue write: strictly guarantees no S or Z in BlockTraining
+extern "C" uint32_t tnt_filter_spawn_piece(uint32_t piece) {
+    const auto& s = tnt::settings();
+    bool block_train = s.block_training || (s.piece_ruleset == "block_training");
+    if (block_train) {
+        if (piece == 2) return 1; // Z -> L
+        if (piece == 3) return 0; // S -> J
+        if (piece > 6) return 5;  // clamp -> I
+    }
+    return piece;
 }
 
 extern "C" void tnt_on_bag_generate(uint8_t* rdram, recomp_context* ctx) {
@@ -378,6 +507,7 @@ extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
     g_live_silver_lines.store(0);
     g_bag_counter.store(0);
     g_is_in_match.store(true);
+    tnt_reset_piece_generator();
 
     if (s.seeded_run) {
         seed = parse_seed_string(s.custom_seed);
@@ -567,10 +697,16 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
                 if (pressed & 0x0100) g_menu_state.piece_ruleset = (g_menu_state.piece_ruleset + 1) % 6;
                 if (pressed & 0x0200) g_menu_state.piece_ruleset = (g_menu_state.piece_ruleset + 5) % 6;
                 if (pressed & 0x8000) g_menu_state.piece_ruleset = (g_menu_state.piece_ruleset + 1) % 6;
+                g_menu_state.block_training = (g_menu_state.piece_ruleset == 5);
                 break;
             case 1: // BlockTraining Mode Toggle
                 if (pressed & (0x0200 | 0x0100 | 0x8000)) {
                     g_menu_state.block_training = !g_menu_state.block_training;
+                    if (g_menu_state.block_training) {
+                        g_menu_state.piece_ruleset = 5;
+                    } else if (g_menu_state.piece_ruleset == 5) {
+                        g_menu_state.piece_ruleset = 0;
+                    }
                 }
                 break;
             case 2: // Seeded Run toggle
@@ -658,6 +794,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
             case 4: // Display Mode (Windowed / Fullscreen)
                 if (pressed & (0x0200 | 0x0100 | 0x8000)) {
                     g_menu_state.fullscreen = !g_menu_state.fullscreen;
+                    tnt::set_fullscreen(g_menu_state.fullscreen);
                 }
                 break;
             case 5: // Save & Return
@@ -736,8 +873,11 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
 
         tnt::settings() = s;
         tnt::save_settings(tnt::settings_path(), s);
-        printf("[settings] Saved Master Menu configuration: Ruleset=%s Training=%d Seed=%s MSAA=%s HUD=%d Discord=%d\n",
-               s.piece_ruleset.c_str(), s.block_training, s.custom_seed.c_str(), s.antialiasing.c_str(), s.tournament_hud, s.enable_discord);
+        tnt::set_fullscreen(s.fullscreen);
+        tnt::apply_runtime_gfx_settings();
+        tnt::reset_piece_generator();
+        printf("[settings] Saved Master Menu configuration: Ruleset=%s Training=%d Seed=%s MSAA=%s HUD=%d Discord=%d Fullscreen=%d\n",
+               s.piece_ruleset.c_str(), s.block_training, s.custom_seed.c_str(), s.antialiasing.c_str(), s.tournament_hud, s.enable_discord, s.fullscreen);
 
         // Apply mode and player count to RDRAM
         wr8(rdram, 0x800D5688, static_cast<uint8_t>(g_menu_state.tournament_mode));

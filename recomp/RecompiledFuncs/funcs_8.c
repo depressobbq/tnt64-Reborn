@@ -2856,6 +2856,7 @@ L_80067DC8:
 RECOMP_FUNC void func_80067DD8(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
+    ctx->r4 = tnt_filter_spawn_piece(ctx->r4);
     // 0x80067DD8: addiu       $sp, $sp, -0x68
     ctx->r29 = ADD32(ctx->r29, -0X68);
     // 0x80067DDC: sw          $s0, 0x20($sp)
@@ -3676,6 +3677,7 @@ L_800682D8:
 RECOMP_FUNC void func_8006832C(uint8_t* rdram, recomp_context* ctx) {
     uint64_t hi = 0, lo = 0, result = 0;
     int c1cs = 0;
+    ctx->r5 = tnt_filter_spawn_piece(ctx->r5);
     // 0x8006832C: addiu       $sp, $sp, -0x30
     ctx->r29 = ADD32(ctx->r29, -0X30);
     // 0x80068330: sw          $a1, 0x34($sp)
