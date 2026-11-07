@@ -495,6 +495,7 @@ extern "C" void tnt_on_bag_generate(uint8_t* rdram, recomp_context* ctx) {
 
 extern "C" void tnt_sync_player_profile(uint8_t* rdram, recomp_context* ctx) {
     if (!rdram) return;
+    (void)ctx;
 
     uint32_t save_block = rd32(rdram, 0x8011FCF0);
     if (save_block < 0x80000000u || save_block + 0x1900 > 0x80800000u) {
@@ -514,22 +515,6 @@ extern "C" void tnt_sync_player_profile(uint8_t* rdram, recomp_context* ctx) {
     }
     while (!target_name.empty() && target_name.back() == ' ') target_name.pop_back();
     if (target_name.empty()) target_name = "PLAYER 1";
-
-    constexpr uint32_t PLAYER0_PROFILE = 0x8011EB3C;
-    constexpr uint32_t PLAYER0_MGR = 0x800D2D80;
-    constexpr uint32_t PLAYER_PTR_TABLE = 0x8011EB2C;
-
-    // Fast check: if Player 0 is already active with target_name, no save/rebind needed
-    uint32_t curr_p0 = rd32(rdram, PLAYER0_MGR + 0xC);
-    if (curr_p0 == PLAYER0_PROFILE && rd32(rdram, PLAYER_PTR_TABLE) == PLAYER0_PROFILE) {
-        char existing[9] = { 0 };
-        for (int k = 0; k < 8; k++) existing[k] = (char)rd8(rdram, PLAYER0_PROFILE + k);
-        std::string ex_str = existing;
-        while (!ex_str.empty() && ex_str.back() == ' ') ex_str.pop_back();
-        if (ex_str == target_name) {
-            return;
-        }
-    }
 
     auto unpack_slot_name = [&](uint32_t slot_addr) -> std::string {
         uint8_t b[6];
@@ -595,7 +580,6 @@ extern "C" void tnt_sync_player_profile(uint8_t* rdram, recomp_context* ctx) {
         }
     }
 
-    bool newly_created = false;
     if (matched_slot == -1) {
         matched_slot = (first_free_slot != -1) ? first_free_slot : 0;
         uint32_t slot_addr = save_block + 4 + matched_slot * 0x78;
@@ -616,41 +600,9 @@ extern "C" void tnt_sync_player_profile(uint8_t* rdram, recomp_context* ctx) {
         uint32_t sum = compute_checksum(save_block);
         wr32(rdram, save_block + 0x18FC, sum);
 
-        newly_created = true;
+        printf("[profile] Populated new Name File in slot %d ('%s') in save block\n",
+               matched_slot, target_name.c_str());
     }
-
-    uint32_t slot_addr = save_block + 4 + matched_slot * 0x78;
-    uint8_t salt1 = rd8(rdram, slot_addr + 6);
-    uint8_t salt2 = rd8(rdram, slot_addr + 7);
-    if (salt1 == 0 && salt2 == 0) {
-        salt1 = static_cast<uint8_t>(((matched_slot + 1) * 37) & 0xFF);
-        salt2 = static_cast<uint8_t>(((matched_slot + 1) * 73) & 0xFF);
-        wr8(rdram, slot_addr + 6, salt1);
-        wr8(rdram, slot_addr + 7, salt2);
-    }
-
-    for (int k = 0; k < 8; k++) {
-        char c = (k < (int)target_name.size()) ? target_name[k] : ' ';
-        wr8(rdram, PLAYER0_PROFILE + k, (uint8_t)c);
-        wr8(rdram, PLAYER0_MGR + k, (uint8_t)c);
-    }
-    wr8(rdram, PLAYER0_PROFILE + 8, 0);
-    wr8(rdram, PLAYER0_MGR + 8, 0);
-    wr8(rdram, PLAYER0_PROFILE + 9, salt1);
-    wr8(rdram, PLAYER0_PROFILE + 0xA, salt2);
-    wr8(rdram, PLAYER0_MGR + 9, salt1);
-    wr8(rdram, PLAYER0_MGR + 0xA, salt2);
-
-    wr32(rdram, PLAYER0_MGR + 0xC, PLAYER0_PROFILE);
-    wr8(rdram, PLAYER0_MGR + 0xB, 0xD);
-    wr8(rdram, PLAYER0_PROFILE + 0xD4, 0xD);
-    wr8(rdram, PLAYER0_PROFILE + 0xD0, 1);
-    wr32(rdram, PLAYER_PTR_TABLE, PLAYER0_PROFILE);
-
-    printf("[profile] Synced profile slot %d ('%s') to Player 0 in RDRAM (newly_created=%d)\n",
-           matched_slot, target_name.c_str(), newly_created ? 1 : 0);
-
-(void)ctx;
 }
 
 extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
