@@ -319,29 +319,26 @@ namespace {
             snprintf(buf, sizeof(buf), "%s PIECE RULESET: <%s>", state.selected_row == 0 ? ">" : " ", ruleset_names[std::clamp(state.piece_ruleset, 0, 5)]);
             lines.push_back({ buf, state.selected_row == 0 ? 1 : 3 });
 
-            snprintf(buf, sizeof(buf), "%s BLOCK TRAINING: <%s>", state.selected_row == 1 ? ">" : " ", state.block_training ? "ON (I,O,L,J,T)" : "OFF");
-            lines.push_back({ buf, state.selected_row == 1 ? 1 : (state.block_training ? 4 : 2) });
+            snprintf(buf, sizeof(buf), "%s SEED RUN:      <%s>", state.selected_row == 1 ? ">" : " ", state.seeded_run ? "FIXED SEED" : "RANDOM");
+            lines.push_back({ buf, state.selected_row == 1 ? 1 : (state.seeded_run ? 4 : 2) });
 
-            snprintf(buf, sizeof(buf), "%s SEED RUN:      <%s>", state.selected_row == 2 ? ">" : " ", state.seeded_run ? "FIXED SEED" : "RANDOM");
-            lines.push_back({ buf, state.selected_row == 2 ? 1 : (state.seeded_run ? 4 : 2) });
+            snprintf(buf, sizeof(buf), "%s MATCH SEED:    <0x%08X>", state.selected_row == 2 ? ">" : " ", state.current_seed);
+            lines.push_back({ buf, state.selected_row == 2 ? 1 : 3 });
 
-            snprintf(buf, sizeof(buf), "%s MATCH SEED:    <0x%08X>", state.selected_row == 3 ? ">" : " ", state.current_seed);
-            lines.push_back({ buf, state.selected_row == 3 ? 1 : 3 });
-
-            snprintf(buf, sizeof(buf), "%s RANDOMIZE SEED", state.selected_row == 4 ? ">" : " ");
-            lines.push_back({ buf, state.selected_row == 4 ? 1 : 0 });
+            snprintf(buf, sizeof(buf), "%s RANDOMIZE SEED", state.selected_row == 3 ? ">" : " ");
+            lines.push_back({ buf, state.selected_row == 3 ? 1 : 0 });
 
             const char* mode_str = (state.tournament_mode == 0) ? "MARATHON" :
                                   (state.tournament_mode == 1 ? "SPRINT (3 MIN)" : "ULTRA (150L)");
-            snprintf(buf, sizeof(buf), "%s GAME TYPE:     <%s>", state.selected_row == 5 ? ">" : " ", mode_str);
-            lines.push_back({ buf, state.selected_row == 5 ? 1 : 0 });
+            snprintf(buf, sizeof(buf), "%s GAME TYPE:     <%s>", state.selected_row == 4 ? ">" : " ", mode_str);
+            lines.push_back({ buf, state.selected_row == 4 ? 1 : 0 });
 
             const char* plyr_str = (state.players == 1) ? "1 PLAYER" : "2 PLAYERS";
-            snprintf(buf, sizeof(buf), "%s MATCH MODE:    <%s>", state.selected_row == 6 ? ">" : " ", plyr_str);
-            lines.push_back({ buf, state.selected_row == 6 ? 1 : 0 });
+            snprintf(buf, sizeof(buf), "%s MATCH MODE:    <%s>", state.selected_row == 5 ? ">" : " ", plyr_str);
+            lines.push_back({ buf, state.selected_row == 5 ? 1 : 0 });
 
-            snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 7 ? ">" : " ");
-            lines.push_back({ buf, state.selected_row == 7 ? 1 : 4 });
+            snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 6 ? ">" : " ");
+            lines.push_back({ buf, state.selected_row == 6 ? 1 : 4 });
         } else if (state.active_tab == 1) { // ENHANCEMENTS
             snprintf(buf, sizeof(buf), "%s SIDEBAR HUD:   <%s>", state.selected_row == 0 ? ">" : " ", state.hud_enabled ? "ON" : "OFF");
             lines.push_back({ buf, state.selected_row == 0 ? 1 : (state.hud_enabled ? 4 : 2) });

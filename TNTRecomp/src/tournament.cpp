@@ -601,10 +601,10 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
         else if (s.piece_ruleset == "nes_1989") g_menu_state.piece_ruleset = 2;
         else if (s.piece_ruleset == "tgm") g_menu_state.piece_ruleset = 3;
         else if (s.piece_ruleset == "pure_random") g_menu_state.piece_ruleset = 4;
-        else if (s.piece_ruleset == "block_training") g_menu_state.piece_ruleset = 5;
+        else if (s.piece_ruleset == "block_training" || s.block_training) g_menu_state.piece_ruleset = 5;
         else g_menu_state.piece_ruleset = 0; // tnt_original
 
-        g_menu_state.block_training = s.block_training || (s.piece_ruleset == "block_training");
+        g_menu_state.block_training = (g_menu_state.piece_ruleset == 5);
         g_menu_state.tournament_mode = 0; // Marathon
         g_menu_state.players = 1;
         g_menu_state.seeded_run = s.seeded_run;
@@ -679,7 +679,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
     // Tab 1 (ENHANCEMENTS): 5 rows
     // Tab 2 (GRAPHICS): 6 rows
     // Tab 3 (DISCORD): 5 rows
-    int row_counts[4] = { 8, 5, 6, 5 };
+    int row_counts[4] = { 7, 5, 6, 5 };
     int max_rows = row_counts[g_menu_state.active_tab];
 
     if (pressed & 0x0800) { // Up
@@ -699,41 +699,31 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
                 if (pressed & 0x8000) g_menu_state.piece_ruleset = (g_menu_state.piece_ruleset + 1) % 6;
                 g_menu_state.block_training = (g_menu_state.piece_ruleset == 5);
                 break;
-            case 1: // BlockTraining Mode Toggle
-                if (pressed & (0x0200 | 0x0100 | 0x8000)) {
-                    g_menu_state.block_training = !g_menu_state.block_training;
-                    if (g_menu_state.block_training) {
-                        g_menu_state.piece_ruleset = 5;
-                    } else if (g_menu_state.piece_ruleset == 5) {
-                        g_menu_state.piece_ruleset = 0;
-                    }
-                }
-                break;
-            case 2: // Seeded Run toggle
+            case 1: // Seeded Run toggle
                 if (pressed & (0x0200 | 0x0100 | 0x8000)) {
                     g_menu_state.seeded_run = !g_menu_state.seeded_run;
                 }
                 break;
-            case 3: // Match Seed Hex Adjust
+            case 2: // Match Seed Hex Adjust
                 if (pressed & 0x0100) g_menu_state.current_seed += 0x00010000;
                 if (pressed & 0x0200) g_menu_state.current_seed -= 0x00010000;
                 break;
-            case 4: // Randomize Seed
+            case 3: // Randomize Seed
                 if (pressed & (0x8000 | 0x0100 | 0x0200)) {
                     g_menu_state.current_seed = static_cast<uint32_t>(rand()) ^ (static_cast<uint32_t>(rand()) << 16);
                     if (g_menu_state.current_seed == 0) g_menu_state.current_seed = 0x12345678;
                 }
                 break;
-            case 5: // Game Type: 0: Marathon, 1: Sprint, 2: Ultra
+            case 4: // Game Type: 0: Marathon, 1: Sprint, 2: Ultra
                 if (pressed & 0x0100) g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 1) % 3;
                 if (pressed & 0x0200) g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 2) % 3;
                 break;
-            case 6: // Match Mode: 1 Player / 2 Players
+            case 5: // Match Mode: 1 Player / 2 Players
                 if (pressed & (0x0100 | 0x0200 | 0x8000)) {
                     g_menu_state.players = (g_menu_state.players == 1) ? 2 : 1;
                 }
                 break;
-            case 7: // Save & Return
+            case 6: // Save & Return
                 if (pressed & (0x8000 | 0x1000)) {
                     exit_menu = true;
                 }
@@ -845,7 +835,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
         // Rules
         const char* ruleset_keys[6] = { "tnt_original", "7_bag", "nes_1989", "tgm", "pure_random", "block_training" };
         s.piece_ruleset = ruleset_keys[std::clamp(g_menu_state.piece_ruleset, 0, 5)];
-        s.block_training = g_menu_state.block_training;
+        s.block_training = (g_menu_state.piece_ruleset == 5);
         s.seeded_run = g_menu_state.seeded_run;
         char hex_buf[16];
         snprintf(hex_buf, sizeof(hex_buf), "0x%08X", g_menu_state.current_seed);
