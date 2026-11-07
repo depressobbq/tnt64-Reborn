@@ -89,8 +89,8 @@ namespace {
         }
         return x;
     }
-    uint32_t fill_color(uint32_t cimg_w0, uint8_t r, uint8_t g, uint8_t b) {
-        if (((cimg_w0 >> 19) & 3) == 3) return (uint32_t(r) << 24) | (uint32_t(g) << 16) | (uint32_t(b) << 8) | 0xFF; // 32-bit
+    uint32_t fill_color(uint32_t cimg0, uint8_t r, uint8_t g, uint8_t b) {
+        if (((cimg0 >> 19) & 3) == 3) return (uint32_t(r) << 24) | (uint32_t(g) << 16) | (uint32_t(b) << 8) | 0xFF; // 32-bit
         uint16_t c = uint16_t(((r >> 3) << 11) | ((g >> 3) << 6) | ((b >> 3) << 1) | 1);              // RGBA5551
         return (uint32_t(c) << 16) | c;
     }
@@ -151,6 +151,9 @@ namespace {
         { 'X', { 0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11 } },
         { 'Y', { 0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04 } },
         { 'Z', { 0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F } },
+        { '[', { 0x0E, 0x08, 0x08, 0x08, 0x08, 0x08, 0x0E } },
+        { ']', { 0x0E, 0x02, 0x02, 0x02, 0x02, 0x02, 0x0E } },
+        { '|', { 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04 } },
     };
     const uint8_t* glyph(char c) {
         if (c >= 'a' && c <= 'z') c = char(c - 'a' + 'A');
@@ -287,62 +290,115 @@ namespace {
         rect(w, x, y, x, y + sz);
     }
 
-    // In-game Tournament Options modal dialog (replaces Credits screen)
+    // In-game Master Settings Menu dialog (Scene 16)
     void draw_tournament_options(DlWriter& w, uint32_t cimg0, int width, int height) {
         auto state = tnt::tournament::get_menu_render_state();
         const int s = width >= 640 ? 2 : 1;
         const int cw = 6 * s, lh = 12 * s;
-        const int cols = 36;
+        const int cols = 38;
 
-        struct Line { std::string text; int color; }; // 0 white, 1 gold, 2 gray, 3 cyan, 4 green, 5 yellow
+        struct Line { std::string text; int color; }; // 0 white, 1 gold, 2 gray, 3 cyan, 4 green, 5 red
         std::vector<Line> lines;
 
-        lines.push_back({ "* TOURNAMENT OPTIONS *", 1 });
+        lines.push_back({ "* REBORN MASTER SETTINGS *", 1 });
+
+        // Tab Bar header with active tab bracketed
+        char tab_buf[64];
+        const char* t0 = (state.active_tab == 0) ? "<RULES>" : " RULES ";
+        const char* t1 = (state.active_tab == 1) ? "<ENHANCE>" : " ENHANCE ";
+        const char* t2 = (state.active_tab == 2) ? "<GFX>" : " GFX ";
+        const char* t3 = (state.active_tab == 3) ? "<DISCORD>" : " DISCORD ";
+        snprintf(tab_buf, sizeof(tab_buf), "[L] %s %s %s %s [R]", t0, t1, t2, t3);
+        lines.push_back({ tab_buf, 3 });
         lines.push_back({ "", 0 });
 
         char buf[64];
-        // Row 0: Seeded Run (Snap between default PRNG and deterministic)
-        snprintf(buf, sizeof(buf), "%s SEEDED RUN:   <%s>", state.selected_row == 0 ? ">" : " ", state.seeded_run ? "ENABLED " : "DISABLED");
-        lines.push_back({ buf, state.selected_row == 0 ? 1 : (state.seeded_run ? 4 : 2) });
 
-        // Row 1: Match Seed
-        snprintf(buf, sizeof(buf), "%s MATCH SEED:   <0x%08X>", state.selected_row == 1 ? ">" : " ", state.current_seed);
-        lines.push_back({ buf, state.selected_row == 1 ? 1 : 3 });
+        if (state.active_tab == 0) { // RULES
+            const char* ruleset_names[6] = { "AUTHENTIC TNT", "MODERN 7-BAG", "NES 1989", "TGM HISTORY", "PURE RANDOM", "BLOCK TRAINING" };
+            snprintf(buf, sizeof(buf), "%s PIECE RULESET: <%s>", state.selected_row == 0 ? ">" : " ", ruleset_names[std::clamp(state.piece_ruleset, 0, 5)]);
+            lines.push_back({ buf, state.selected_row == 0 ? 1 : 3 });
 
-        // Row 2: Randomize Seed
-        snprintf(buf, sizeof(buf), "%s RANDOMIZE SEED", state.selected_row == 2 ? ">" : " ");
-        lines.push_back({ buf, state.selected_row == 2 ? 1 : 0 });
+            snprintf(buf, sizeof(buf), "%s BLOCK TRAINING: <%s>", state.selected_row == 1 ? ">" : " ", state.block_training ? "ON (I,O,L,J,T)" : "OFF");
+            lines.push_back({ buf, state.selected_row == 1 ? 1 : (state.block_training ? 4 : 2) });
 
-        // Row 3: Game Type: Marathon / Sprint / Ultra
-        const char* mode_str = (state.tournament_mode == 0) ? "MARATHON" :
-                              (state.tournament_mode == 1 ? "SPRINT (3 MIN)" : "ULTRA (150L)");
-        snprintf(buf, sizeof(buf), "%s GAME TYPE:    <%s>", state.selected_row == 3 ? ">" : " ", mode_str);
-        lines.push_back({ buf, state.selected_row == 3 ? 1 : 5 });
+            snprintf(buf, sizeof(buf), "%s SEED RUN:      <%s>", state.selected_row == 2 ? ">" : " ", state.seeded_run ? "FIXED SEED" : "RANDOM");
+            lines.push_back({ buf, state.selected_row == 2 ? 1 : (state.seeded_run ? 4 : 2) });
 
-        // Row 4: Match Mode: 1 Player / 2 Players
-        const char* plyr_str = (state.players == 1) ? "1 PLAYER" : "2 PLAYERS";
-        snprintf(buf, sizeof(buf), "%s MATCH MODE:   <%s>", state.selected_row == 4 ? ">" : " ", plyr_str);
-        lines.push_back({ buf, state.selected_row == 4 ? 1 : 5 });
+            snprintf(buf, sizeof(buf), "%s MATCH SEED:    <0x%08X>", state.selected_row == 3 ? ">" : " ", state.current_seed);
+            lines.push_back({ buf, state.selected_row == 3 ? 1 : 3 });
 
-        // Row 5: Sidebar HUD
-        snprintf(buf, sizeof(buf), "%s SIDEBAR HUD:  <%s>", state.selected_row == 5 ? ">" : " ", state.hud_enabled ? "ON " : "OFF");
-        lines.push_back({ buf, state.selected_row == 5 ? 1 : (state.hud_enabled ? 4 : 2) });
+            snprintf(buf, sizeof(buf), "%s RANDOMIZE SEED", state.selected_row == 4 ? ">" : " ");
+            lines.push_back({ buf, state.selected_row == 4 ? 1 : 0 });
 
-        // Row 6: Discord Share
-        snprintf(buf, sizeof(buf), "%s DISCORD POST: <%s>", state.selected_row == 6 ? ">" : " ", state.discord_enabled ? "ON " : "OFF");
-        lines.push_back({ buf, state.selected_row == 6 ? 1 : (state.discord_enabled ? 4 : 2) });
+            const char* mode_str = (state.tournament_mode == 0) ? "MARATHON" :
+                                  (state.tournament_mode == 1 ? "SPRINT (3 MIN)" : "ULTRA (150L)");
+            snprintf(buf, sizeof(buf), "%s GAME TYPE:     <%s>", state.selected_row == 5 ? ">" : " ", mode_str);
+            lines.push_back({ buf, state.selected_row == 5 ? 1 : 0 });
 
-        // Row 7: Save & Return
-        snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 7 ? ">" : " ");
-        lines.push_back({ buf, state.selected_row == 7 ? 1 : 0 });
+            const char* plyr_str = (state.players == 1) ? "1 PLAYER" : "2 PLAYERS";
+            snprintf(buf, sizeof(buf), "%s MATCH MODE:    <%s>", state.selected_row == 6 ? ">" : " ", plyr_str);
+            lines.push_back({ buf, state.selected_row == 6 ? 1 : 0 });
 
-        // Row 8: Exit Game
-        snprintf(buf, sizeof(buf), "%s EXIT GAME", state.selected_row == 8 ? ">" : " ");
-        lines.push_back({ buf, state.selected_row == 8 ? 1 : 5 });
+            snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 7 ? ">" : " ");
+            lines.push_back({ buf, state.selected_row == 7 ? 1 : 4 });
+        } else if (state.active_tab == 1) { // ENHANCEMENTS
+            snprintf(buf, sizeof(buf), "%s SIDEBAR HUD:   <%s>", state.selected_row == 0 ? ">" : " ", state.hud_enabled ? "ON" : "OFF");
+            lines.push_back({ buf, state.selected_row == 0 ? 1 : (state.hud_enabled ? 4 : 2) });
+
+            snprintf(buf, sizeof(buf), "%s MATCH TIMER:   <%s>", state.selected_row == 1 ? ">" : " ", state.timer_enabled ? "ON" : "OFF");
+            lines.push_back({ buf, state.selected_row == 1 ? 1 : (state.timer_enabled ? 4 : 2) });
+
+            snprintf(buf, sizeof(buf), "%s POST-GAME PANEL:<%s>", state.selected_row == 2 ? ">" : " ", state.panel_enabled ? "ON" : "OFF");
+            lines.push_back({ buf, state.selected_row == 2 ? 1 : (state.panel_enabled ? 4 : 2) });
+
+            snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 3 ? ">" : " ");
+            lines.push_back({ buf, state.selected_row == 3 ? 1 : 4 });
+
+            snprintf(buf, sizeof(buf), "%s EXIT GAME", state.selected_row == 4 ? ">" : " ");
+            lines.push_back({ buf, state.selected_row == 4 ? 1 : 5 });
+        } else if (state.active_tab == 2) { // GRAPHICS
+            const char* msaa_str[4] = { "OFF", "2X", "4X", "8X" };
+            snprintf(buf, sizeof(buf), "%s ANTIALIASING:  <%s>", state.selected_row == 0 ? ">" : " ", msaa_str[std::clamp(state.antialiasing, 0, 3)]);
+            lines.push_back({ buf, state.selected_row == 0 ? 1 : 3 });
+
+            const char* filter_str[3] = { "PIXEL SCALING", "LINEAR", "NEAREST" };
+            snprintf(buf, sizeof(buf), "%s TEXTURE FILTER:<%s>", state.selected_row == 1 ? ">" : " ", filter_str[std::clamp(state.filtering, 0, 2)]);
+            lines.push_back({ buf, state.selected_row == 1 ? 1 : 0 });
+
+            const char* upscale_str[3] = { "SCALED ONLY", "ALL", "ORIGINAL" };
+            snprintf(buf, sizeof(buf), "%s 2D UI UPSCALE: <%s>", state.selected_row == 2 ? ">" : " ", upscale_str[std::clamp(state.upscale_2d, 0, 2)]);
+            lines.push_back({ buf, state.selected_row == 2 ? 1 : 0 });
+
+            snprintf(buf, sizeof(buf), "%s FPS OVERLAY:   <%s>", state.selected_row == 3 ? ">" : " ", state.show_fps ? "ON" : "OFF");
+            lines.push_back({ buf, state.selected_row == 3 ? 1 : (state.show_fps ? 4 : 2) });
+
+            snprintf(buf, sizeof(buf), "%s DISPLAY MODE:  <%s>", state.selected_row == 4 ? ">" : " ", state.fullscreen ? "FULLSCREEN" : "WINDOWED");
+            lines.push_back({ buf, state.selected_row == 4 ? 1 : 0 });
+
+            snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 5 ? ">" : " ");
+            lines.push_back({ buf, state.selected_row == 5 ? 1 : 4 });
+        } else if (state.active_tab == 3) { // DISCORD
+            snprintf(buf, sizeof(buf), "%s DISCORD WEBHOOK:<%s>", state.selected_row == 0 ? ">" : " ", state.discord_enabled ? "ON" : "OFF");
+            lines.push_back({ buf, state.selected_row == 0 ? 1 : (state.discord_enabled ? 4 : 2) });
+
+            snprintf(buf, sizeof(buf), "%s PLAYER NAME:    <%s>", state.selected_row == 1 ? ">" : " ", state.player_name);
+            lines.push_back({ buf, state.selected_row == 1 ? 1 : 3 });
+
+            snprintf(buf, sizeof(buf), "%s WEBHOOK URL:    <%s>", state.selected_row == 2 ? ">" : " ", state.webhook_set ? "CONFIGURED" : "NOT SET IN INI");
+            lines.push_back({ buf, state.selected_row == 2 ? 1 : (state.webhook_set ? 4 : 2) });
+
+            const char* test_label = state.test_post_sent ? "< POST SENT! >" : "[A] SEND TEST POST";
+            snprintf(buf, sizeof(buf), "%s TEST WEBHOOK:   %s", state.selected_row == 3 ? ">" : " ", test_label);
+            lines.push_back({ buf, state.selected_row == 3 ? 1 : (state.test_post_sent ? 4 : 0) });
+
+            snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 4 ? ">" : " ");
+            lines.push_back({ buf, state.selected_row == 4 ? 1 : 4 });
+        }
 
         lines.push_back({ "", 0 });
-        lines.push_back({ " [A] SELECT/TOGGLE   [B] BACK", 2 });
-        lines.push_back({ " [D-PAD] ADJUST      [L/R] +-0x1000", 2 });
+        lines.push_back({ " [L/R] SWITCH TAB   [D-PAD] ADJUST", 2 });
+        lines.push_back({ " [A] SELECT/TOGGLE  [B] SAVE & RETURN", 2 });
 
         int pw = cols * cw + 24 * s, ph = int(lines.size()) * lh + 20 * s;
         int x0 = (width - pw) / 2, y0 = (height - ph) / 2;
@@ -359,8 +415,12 @@ namespace {
         set_color(w, cimg0, 190, 150, 45);
         rect(w, x0 + 8 * s, y0 + 19 * s, x0 + pw - 9 * s, y0 + 19 * s + s - 1);
 
-        // Glowing selection pill highlight
-        int sel_line = 2 + state.selected_row;
+        // Accent line under tab bar
+        set_color(w, cimg0, 120, 140, 180);
+        rect(w, x0 + 8 * s, y0 + 31 * s, x0 + pw - 9 * s, y0 + 31 * s + s - 1);
+
+        // Glowing selection pill highlight (line 3 is row 0)
+        int sel_line = 3 + state.selected_row;
         int hl_y0 = y0 + 10 * s + sel_line * lh - 1 * s;
         int hl_y1 = hl_y0 + lh - 1 * s;
 
@@ -419,8 +479,8 @@ namespace {
     void draw_tournament_hud(DlWriter& w, uint32_t cimg0, int width, int height, const tnt::tournament::LiveStats& st, const char* timer_str = nullptr) {
         if (!st.in_game) return;
         const int s = width >= 640 ? 2 : 1;
-        int box_w = 116 * s;
-        int box_h = 108 * s;
+        int box_w = 118 * s;
+        int box_h = 116 * s;
         // Position on the right side over the scorecard
         int x = width - box_w - 4 * s;
         int y = (height >= 480) ? 36 : 18;
@@ -442,54 +502,59 @@ namespace {
         const char* time_display = (timer_str && timer_str[0]) ? timer_str : st.timer_str;
 
         char buf[64];
-        // Line 1: TIME (Integrated match timer)
-        set_color(w, cimg0, 120, 220, 255);
-        snprintf(buf, sizeof(buf), "TIME:        %s", time_display);
+        // Line 1: RULES
+        set_color(w, cimg0, 255, 140, 220);
+        snprintf(buf, sizeof(buf), "RULES:       %s", st.ruleset_name);
         text(w, x + 4 * s, y + 15 * s, s, buf);
 
-        // Line 2: TRUE LINES (Full "TRUE LINES" text)
-        set_color(w, cimg0, 245, 245, 255);
-        snprintf(buf, sizeof(buf), "TRUE LINES:  %u", st.true_lines);
+        // Line 2: TIME (Integrated match timer)
+        set_color(w, cimg0, 120, 220, 255);
+        snprintf(buf, sizeof(buf), "TIME:        %s", time_display);
         text(w, x + 4 * s, y + 25 * s, s, buf);
 
-        // Line 3: LPM
-        set_color(w, cimg0, 255, 210, 70);
-        snprintf(buf, sizeof(buf), "LPM:         %.1f", st.lpm);
+        // Line 3: TRUE LINES (Full "TRUE LINES" text)
+        set_color(w, cimg0, 245, 245, 255);
+        snprintf(buf, sizeof(buf), "TRUE LINES:  %u", st.true_lines);
         text(w, x + 4 * s, y + 35 * s, s, buf);
 
-        // Line 4: TOTAL BLOCKS
-        set_color(w, cimg0, 210, 225, 250);
-        snprintf(buf, sizeof(buf), "TOTAL BLOCKS:%u", st.blocks_made);
+        // Line 4: LPM
+        set_color(w, cimg0, 255, 210, 70);
+        snprintf(buf, sizeof(buf), "LPM:         %.1f", st.lpm);
         text(w, x + 4 * s, y + 45 * s, s, buf);
 
-        // Line 5: GOLD BLOCKS
-        set_color(w, cimg0, 255, 215, 0);
-        snprintf(buf, sizeof(buf), "GOLD BLOCKS: %u", st.gold_blocks);
+        // Line 5: TOTAL BLOCKS
+        set_color(w, cimg0, 210, 225, 250);
+        snprintf(buf, sizeof(buf), "TOTAL BLOCKS:%u", st.blocks_made);
         text(w, x + 4 * s, y + 55 * s, s, buf);
 
-        // Line 6: SILVER BLOCKS
-        set_color(w, cimg0, 200, 210, 225);
-        snprintf(buf, sizeof(buf), "SILVER BLKS: %u", st.silver_blocks);
+        // Line 6: GOLD BLOCKS
+        set_color(w, cimg0, 255, 215, 0);
+        snprintf(buf, sizeof(buf), "GOLD BLOCKS: %u", st.gold_blocks);
         text(w, x + 4 * s, y + 65 * s, s, buf);
 
-        // Line 7: GOLD LINES (Lines cleared with gold blocks)
-        set_color(w, cimg0, 255, 195, 50);
-        snprintf(buf, sizeof(buf), "GOLD LINES:  %u", st.gold_lines);
+        // Line 7: SILVER BLOCKS
+        set_color(w, cimg0, 200, 210, 225);
+        snprintf(buf, sizeof(buf), "SILVER BLKS: %u", st.silver_blocks);
         text(w, x + 4 * s, y + 75 * s, s, buf);
 
-        // Line 8: SILVER LINES (Lines cleared with silver blocks)
-        set_color(w, cimg0, 185, 200, 220);
-        snprintf(buf, sizeof(buf), "SILVER LINES:%u", st.silver_lines);
+        // Line 8: GOLD LINES (Lines cleared with gold blocks)
+        set_color(w, cimg0, 255, 195, 50);
+        snprintf(buf, sizeof(buf), "GOLD LINES:  %u", st.gold_lines);
         text(w, x + 4 * s, y + 85 * s, s, buf);
 
-        // Line 9: STATIC MATCH SEED
+        // Line 9: SILVER LINES (Lines cleared with silver blocks)
+        set_color(w, cimg0, 185, 200, 220);
+        snprintf(buf, sizeof(buf), "SILVER LINES:%u", st.silver_lines);
+        text(w, x + 4 * s, y + 95 * s, s, buf);
+
+        // Line 10: STATIC MATCH SEED
         if (st.seeded) {
             snprintf(buf, sizeof(buf), "SEED: %08X", st.active_seed);
             set_color(w, cimg0, 110, 225, 255);
-            text(w, x + 4 * s, y + 96 * s, s, buf);
+            text(w, x + 4 * s, y + 105 * s, s, buf);
         } else {
             set_color(w, cimg0, 160, 175, 205);
-            text(w, x + 4 * s, y + 96 * s, s, "SEED: RANDOM");
+            text(w, x + 4 * s, y + 105 * s, s, "SEED: RANDOM");
         }
     }
 bool tnt_build_overlay(uint8_t* rdram, uint32_t game_dl, uint64_t frame) {

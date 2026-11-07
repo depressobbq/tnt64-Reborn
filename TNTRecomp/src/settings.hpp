@@ -65,7 +65,10 @@ namespace tnt {
         bool tournament_hud = true;
         bool seeded_run = false;
         std::string custom_seed = "0x00000000";
+        std::string piece_ruleset = "tnt_original"; // tnt_original, 7_bag, nes_1989, tgm, pure_random, block_training
+        bool block_training = false; // When true, only drops I, Square (O), L, J, T (no S or Z)
         bool enable_discord = false;
+        std::string discord_player_name = "Player 1";
         std::string discord_webhook = "";
     };
 

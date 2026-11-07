@@ -9,10 +9,14 @@
 #include <thread>
 #include <atomic>
 #include <algorithm>
+#include <chrono>
 
 #if defined(_WIN32)
 #include <windows.h>
 #endif
+
+extern std::atomic<bool> tnt_overlay_enabled;
+extern std::atomic<bool> tnt_timer_enabled;
 
 namespace {
     std::atomic<uint32_t> g_match_initial_seed{ 0x12345678 };
@@ -71,13 +75,35 @@ namespace {
     }
 
     struct TournamentMenuInternalState {
+        int active_tab = 0; // 0: RULES, 1: ENHANCEMENTS, 2: GRAPHICS, 3: DISCORD
         int selected_row = 0;
-        int tournament_mode = 0; // 0: Marathon, 1: Sprint, 2: Ultra
-        int players = 1;         // 1: 1 Player, 2: 2 Players
-        uint32_t current_seed = 0x12345678;
+
+        // Tab 0: Rules
+        int piece_ruleset = 0; // 0: TNT ORIG, 1: 7-BAG, 2: NES 1989, 3: TGM, 4: RANDOM, 5: TRAINING
+        bool block_training = false;
         bool seeded_run = false;
+        uint32_t current_seed = 0x12345678;
+        int tournament_mode = 0; // 0: Marathon, 1: Sprint, 2: Ultra
+        int players = 1;         // 1 or 2
+
+        // Tab 1: Enhancements
         bool hud_enabled = true;
+        bool timer_enabled = true;
+        bool panel_enabled = true;
+
+        // Tab 2: Graphics
+        int antialiasing = 3;    // 0: OFF, 1: 2X, 2: 4X, 3: 8X
+        int filtering = 0;       // 0: SCALING, 1: LINEAR, 2: NEAREST
+        int upscale_2d = 0;      // 0: SCALED ONLY, 1: ALL, 2: ORIGINAL
+        bool show_fps = true;
+        bool fullscreen = false;
+
+        // Tab 3: Discord
         bool discord_enabled = false;
+        std::string discord_player_name = "Player 1";
+        bool webhook_set = false;
+        bool test_post_sent = false;
+
         bool initialized = false;
     };
     TournamentMenuInternalState g_menu_state;
@@ -117,13 +143,26 @@ namespace tnt::tournament {
 
     MenuRenderState get_menu_render_state() {
         MenuRenderState s;
+        s.active_tab = g_menu_state.active_tab;
         s.selected_row = g_menu_state.selected_row;
+        s.piece_ruleset = g_menu_state.piece_ruleset;
+        s.block_training = g_menu_state.block_training;
         s.tournament_mode = g_menu_state.tournament_mode;
         s.players = g_menu_state.players;
         s.seeded_run = g_menu_state.seeded_run;
         s.current_seed = g_menu_state.current_seed;
         s.hud_enabled = g_menu_state.hud_enabled;
+        s.timer_enabled = g_menu_state.timer_enabled;
+        s.panel_enabled = g_menu_state.panel_enabled;
+        s.antialiasing = g_menu_state.antialiasing;
+        s.filtering = g_menu_state.filtering;
+        s.upscale_2d = g_menu_state.upscale_2d;
+        s.show_fps = g_menu_state.show_fps;
+        s.fullscreen = g_menu_state.fullscreen;
         s.discord_enabled = g_menu_state.discord_enabled;
+        snprintf(s.player_name, sizeof(s.player_name), "%s", g_menu_state.discord_player_name.c_str());
+        s.webhook_set = g_menu_state.webhook_set;
+        s.test_post_sent = g_menu_state.test_post_sent;
         return s;
     }
 }
@@ -136,11 +175,11 @@ extern "C" void tnt_apply_menu_patches(uint8_t* rdram) {
     constexpr uint32_t tourney_label_vram = 0x807E0040;
 
     if (rd32(rdram, credits_ptr_phys) != tourney_label_vram) {
-        wr_string(rdram, tourney_label_vram, "TOURNAMENT");
+        wr_string(rdram, tourney_label_vram, "REBORN SETTINGS");
         wr32(rdram, credits_ptr_phys, tourney_label_vram);
 
         // Menu label at VRAM 0x800E0724
-        wr_string(rdram, 0x800E0724, "TOURNEY");
+        wr_string(rdram, 0x800E0724, "SETTINGS");
 
         // CUSTOM track label for Audio Menu at 0x807E0080
         wr_string(rdram, 0x807E0080, "CUSTOM.");
@@ -189,6 +228,113 @@ extern "C" void tnt_on_match_piece_init(uint8_t* rdram, recomp_context* ctx) {
     }
 
     printf("[seed] Applied seed: 0x%08X (player %u)\n", seed, player);
+}
+
+// Hook called when the 400-piece game queue is generated for a player
+extern "C" void tnt_on_pieces_generated(uint8_t* rdram, uint32_t player) {
+    if (!rdram || player > 3) return;
+    const auto& s = tnt::settings();
+
+    bool block_train = s.block_training || (s.piece_ruleset == "block_training");
+    if (!block_train && (s.piece_ruleset == "tnt_original" || s.piece_ruleset.empty())) {
+        return; // Keep game's authentic TNT PRNG sequence
+    }
+
+    uint32_t table_ptr = rd32(rdram, 0x800E1F20);
+    if (!table_ptr) return;
+
+    // Deterministic PRNG seeding
+    uint32_t rng_state;
+    if (s.seeded_run) {
+        rng_state = parse_seed_string(s.custom_seed) + (player * 0x1F123BB5u);
+        if (rng_state == 0) rng_state = 0x12345678u + player;
+    } else {
+        auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        rng_state = static_cast<uint32_t>(now ^ (now >> 32)) + player * 7777u;
+    }
+
+    auto next_rand = [&rng_state]() -> uint32_t {
+        rng_state = rng_state * 1664525u + 1013904223u;
+        return rng_state;
+    };
+
+    uint8_t pieces[400];
+
+    if (block_train) {
+        // BlockTraining Mode: ONLY pieces 0 (I), 1 (Square/O), 2 (L), 3 (J), 4 (T)
+        // Strictly excludes 5 (S) and 6 (Z) for pure mono-block (4x4 gold) and silver cube building
+        int idx = 0;
+        while (idx < 400) {
+            uint8_t bag[5] = { 0, 1, 2, 3, 4 };
+            // Fisher-Yates shuffle
+            for (int i = 4; i > 0; --i) {
+                int j = next_rand() % (i + 1);
+                std::swap(bag[i], bag[j]);
+            }
+            for (int i = 0; i < 5 && idx < 400; ++i) {
+                pieces[idx++] = bag[i];
+            }
+        }
+    } else if (s.piece_ruleset == "7_bag") {
+        // Modern Tetris Guideline 7-Bag
+        int idx = 0;
+        while (idx < 400) {
+            uint8_t bag[7] = { 0, 1, 2, 3, 4, 5, 6 };
+            for (int i = 6; i > 0; --i) {
+                int j = next_rand() % (i + 1);
+                std::swap(bag[i], bag[j]);
+            }
+            for (int i = 0; i < 7 && idx < 400; ++i) {
+                pieces[idx++] = bag[i];
+            }
+        }
+    } else if (s.piece_ruleset == "nes_1989") {
+        // NES 1989 Tetris rules: roll 0..7. If 7 or == previous, roll 0..6.
+        uint8_t prev = 7;
+        for (int idx = 0; idx < 400; ++idx) {
+            uint32_t roll = next_rand() % 8;
+            if (roll == 7 || roll == prev) {
+                roll = next_rand() % 7;
+            }
+            prev = static_cast<uint8_t>(roll);
+            pieces[idx] = prev;
+        }
+    } else if (s.piece_ruleset == "tgm") {
+        // Tetris Grand Master (TGM) History: 4-piece history with up to 4 retries
+        uint8_t history[4] = { 6, 6, 5, 5 }; // Z, Z, S, S
+        const uint8_t first_pool[4] = { 0, 2, 3, 4 }; // I, L, J, T (no S/Z/O on opener)
+        pieces[0] = first_pool[next_rand() % 4];
+        history[0] = history[1]; history[1] = history[2]; history[2] = history[3]; history[3] = pieces[0];
+
+        for (int idx = 1; idx < 400; ++idx) {
+            uint8_t piece = next_rand() % 7;
+            for (int retry = 0; retry < 4; ++retry) {
+                bool in_hist = (piece == history[0] || piece == history[1] || piece == history[2] || piece == history[3]);
+                if (!in_hist) break;
+                piece = next_rand() % 7;
+            }
+            pieces[idx] = piece;
+            history[0] = history[1]; history[1] = history[2]; history[2] = history[3]; history[3] = piece;
+        }
+    } else if (s.piece_ruleset == "pure_random") {
+        // Pure Uniform Random 0..6
+        for (int idx = 0; idx < 400; ++idx) {
+            pieces[idx] = static_cast<uint8_t>(next_rand() % 7);
+        }
+    }
+
+    // Write to player's piece table in RDRAM: (base + 1200 * player + 3 * i + 3)
+    uint32_t base = table_ptr & 0x7FFFFF;
+    for (uint32_t i = 0; i < 400; ++i) {
+        uint32_t piece_addr = base + 1200 * player + 3 * i + 3;
+        wr8(rdram, piece_addr, pieces[i]);
+    }
+
+    printf("[rules] Applied %s ruleset to player %u (first 10: %d %d %d %d %d %d %d %d %d %d)\n",
+           block_train ? "BlockTraining" : s.piece_ruleset.c_str(),
+           player,
+           pieces[0], pieces[1], pieces[2], pieces[3], pieces[4],
+           pieces[5], pieces[6], pieces[7], pieces[8], pieces[9]);
 }
 
 extern "C" void tnt_on_bag_generate(uint8_t* rdram, recomp_context* ctx) {
@@ -306,25 +452,63 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
         return 0;
     }
     if (state == 2) {
-        // Exit / teardown in progress: let original teardown run cleanly to return to Scene 4
+        // Exit / teardown in progress: return to Scene 4 cleanly
         g_options_menu_open.store(false);
         g_menu_state.initialized = false;
         return 0;
     }
 
-    // State 1: In Tournament Options menu
+    // State 1: In Master Settings Menu
     g_options_menu_open.store(true);
 
     if (!g_menu_state.initialized) {
         const auto& s = tnt::settings();
+        g_menu_state.active_tab = 0;
+        g_menu_state.selected_row = 0;
+
+        // Rules
+        if (s.piece_ruleset == "7_bag") g_menu_state.piece_ruleset = 1;
+        else if (s.piece_ruleset == "nes_1989") g_menu_state.piece_ruleset = 2;
+        else if (s.piece_ruleset == "tgm") g_menu_state.piece_ruleset = 3;
+        else if (s.piece_ruleset == "pure_random") g_menu_state.piece_ruleset = 4;
+        else if (s.piece_ruleset == "block_training") g_menu_state.piece_ruleset = 5;
+        else g_menu_state.piece_ruleset = 0; // tnt_original
+
+        g_menu_state.block_training = s.block_training || (s.piece_ruleset == "block_training");
         g_menu_state.tournament_mode = 0; // Marathon
-        g_menu_state.players = 1;         // 1 Player
+        g_menu_state.players = 1;
         g_menu_state.seeded_run = s.seeded_run;
         g_menu_state.current_seed = parse_seed_string(s.custom_seed);
         if (g_menu_state.current_seed == 0) g_menu_state.current_seed = 0x12345678;
+
+        // Enhancements
         g_menu_state.hud_enabled = s.tournament_hud;
+        g_menu_state.timer_enabled = s.show_timer;
+        g_menu_state.panel_enabled = s.after_game_panel;
+
+        // Graphics
+        if (s.antialiasing == "none") g_menu_state.antialiasing = 0;
+        else if (s.antialiasing == "2x") g_menu_state.antialiasing = 1;
+        else if (s.antialiasing == "4x") g_menu_state.antialiasing = 2;
+        else g_menu_state.antialiasing = 3; // 8x
+
+        if (s.filtering == "linear") g_menu_state.filtering = 1;
+        else if (s.filtering == "nearest") g_menu_state.filtering = 2;
+        else g_menu_state.filtering = 0; // pixel_scaling
+
+        if (s.upscale_2d == "all") g_menu_state.upscale_2d = 1;
+        else if (s.upscale_2d == "original") g_menu_state.upscale_2d = 2;
+        else g_menu_state.upscale_2d = 0; // scaled_only
+
+        g_menu_state.show_fps = s.show_fps;
+        g_menu_state.fullscreen = s.fullscreen;
+
+        // Discord
         g_menu_state.discord_enabled = s.enable_discord;
-        g_menu_state.selected_row = 0;
+        g_menu_state.discord_player_name = s.discord_player_name.empty() ? "Player 1" : s.discord_player_name;
+        g_menu_state.webhook_set = !s.discord_webhook.empty();
+        g_menu_state.test_post_sent = false;
+
         g_menu_state.initialized = true;
     }
 
@@ -350,60 +534,168 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
     uint16_t pressed = buttons & ~s_last_buttons;
     s_last_buttons = buttons;
 
+    // L / R Bumpers switch active tabs
+    if (pressed & 0x0020) { // L Bumper
+        g_menu_state.active_tab = (g_menu_state.active_tab + 3) % 4;
+        g_menu_state.selected_row = 0;
+    }
+    if (pressed & 0x0010) { // R Bumper
+        g_menu_state.active_tab = (g_menu_state.active_tab + 1) % 4;
+        g_menu_state.selected_row = 0;
+    }
+
+    // Number of rows per tab:
+    // Tab 0 (RULES): 8 rows
+    // Tab 1 (ENHANCEMENTS): 5 rows
+    // Tab 2 (GRAPHICS): 6 rows
+    // Tab 3 (DISCORD): 5 rows
+    int row_counts[4] = { 8, 5, 6, 5 };
+    int max_rows = row_counts[g_menu_state.active_tab];
+
     if (pressed & 0x0800) { // Up
-        g_menu_state.selected_row = (g_menu_state.selected_row + 8) % 9;
+        g_menu_state.selected_row = (g_menu_state.selected_row + max_rows - 1) % max_rows;
     }
     if (pressed & 0x0400) { // Down
-        g_menu_state.selected_row = (g_menu_state.selected_row + 1) % 9;
+        g_menu_state.selected_row = (g_menu_state.selected_row + 1) % max_rows;
     }
 
     bool exit_menu = false;
 
-    switch (g_menu_state.selected_row) {
-        case 0: // Seeded Run toggle
-            if (pressed & (0x0200 | 0x0100 | 0x8000)) {
-                g_menu_state.seeded_run = !g_menu_state.seeded_run;
-            }
-            break;
-        case 1: // Mode: 0: Marathon, 1: Sprint, 2: Ultra
-            if (pressed & 0x0100) g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 1) % 3;
-            if (pressed & 0x0200) g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 2) % 3;
-            break;
-        case 2: // Players: 1 or 2
-            if (pressed & (0x0100 | 0x0200)) g_menu_state.players = (g_menu_state.players == 1) ? 2 : 1;
-            break;
-        case 3: // Seed Hex Digit Adjust
-            if (pressed & 0x0100) g_menu_state.current_seed += 0x00010000;
-            if (pressed & 0x0200) g_menu_state.current_seed -= 0x00010000;
-            break;
-        case 4: // Randomize Seed
-            if (pressed & (0x8000 | 0x0100 | 0x0200)) {
-                g_menu_state.current_seed = static_cast<uint32_t>(rand()) ^ (static_cast<uint32_t>(rand()) << 16);
-                if (g_menu_state.current_seed == 0) g_menu_state.current_seed = 0x12345678;
-            }
-            break;
-        case 5: // HUD Toggle
-            if (pressed & (0x0200 | 0x0100 | 0x8000)) {
-                g_menu_state.hud_enabled = !g_menu_state.hud_enabled;
-            }
-            break;
-        case 6: // Discord Webhook Toggle
-            if (pressed & (0x0200 | 0x0100 | 0x8000)) {
-                g_menu_state.discord_enabled = !g_menu_state.discord_enabled;
-            }
-            break;
-        case 7: // Start Match
-            if (pressed & (0x8000 | 0x1000)) {
-                exit_menu = true;
-            }
-            break;
-        case 8: // Exit Game
-            if (pressed & (0x8000 | 0x1000)) {
-                printf("[game] Exiting...\n");
-                tnt::audio::shutdown_custom_audio();
-                std::exit(0);
-            }
-            break;
+    if (g_menu_state.active_tab == 0) { // RULES
+        switch (g_menu_state.selected_row) {
+            case 0: // Piece Ruleset
+                if (pressed & 0x0100) g_menu_state.piece_ruleset = (g_menu_state.piece_ruleset + 1) % 6;
+                if (pressed & 0x0200) g_menu_state.piece_ruleset = (g_menu_state.piece_ruleset + 5) % 6;
+                if (pressed & 0x8000) g_menu_state.piece_ruleset = (g_menu_state.piece_ruleset + 1) % 6;
+                break;
+            case 1: // BlockTraining Mode Toggle
+                if (pressed & (0x0200 | 0x0100 | 0x8000)) {
+                    g_menu_state.block_training = !g_menu_state.block_training;
+                }
+                break;
+            case 2: // Seeded Run toggle
+                if (pressed & (0x0200 | 0x0100 | 0x8000)) {
+                    g_menu_state.seeded_run = !g_menu_state.seeded_run;
+                }
+                break;
+            case 3: // Match Seed Hex Adjust
+                if (pressed & 0x0100) g_menu_state.current_seed += 0x00010000;
+                if (pressed & 0x0200) g_menu_state.current_seed -= 0x00010000;
+                break;
+            case 4: // Randomize Seed
+                if (pressed & (0x8000 | 0x0100 | 0x0200)) {
+                    g_menu_state.current_seed = static_cast<uint32_t>(rand()) ^ (static_cast<uint32_t>(rand()) << 16);
+                    if (g_menu_state.current_seed == 0) g_menu_state.current_seed = 0x12345678;
+                }
+                break;
+            case 5: // Game Type: 0: Marathon, 1: Sprint, 2: Ultra
+                if (pressed & 0x0100) g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 1) % 3;
+                if (pressed & 0x0200) g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 2) % 3;
+                break;
+            case 6: // Match Mode: 1 Player / 2 Players
+                if (pressed & (0x0100 | 0x0200 | 0x8000)) {
+                    g_menu_state.players = (g_menu_state.players == 1) ? 2 : 1;
+                }
+                break;
+            case 7: // Save & Return
+                if (pressed & (0x8000 | 0x1000)) {
+                    exit_menu = true;
+                }
+                break;
+        }
+    } else if (g_menu_state.active_tab == 1) { // ENHANCEMENTS
+        switch (g_menu_state.selected_row) {
+            case 0: // Sidebar HUD
+                if (pressed & (0x0200 | 0x0100 | 0x8000)) {
+                    g_menu_state.hud_enabled = !g_menu_state.hud_enabled;
+                }
+                break;
+            case 1: // Match Timer
+                if (pressed & (0x0200 | 0x0100 | 0x8000)) {
+                    g_menu_state.timer_enabled = !g_menu_state.timer_enabled;
+                }
+                break;
+            case 2: // After-Game Panel
+                if (pressed & (0x0200 | 0x0100 | 0x8000)) {
+                    g_menu_state.panel_enabled = !g_menu_state.panel_enabled;
+                }
+                break;
+            case 3: // Save & Return
+                if (pressed & (0x8000 | 0x1000)) {
+                    exit_menu = true;
+                }
+                break;
+            case 4: // Exit Game
+                if (pressed & (0x8000 | 0x1000)) {
+                    printf("[game] Exiting via settings menu...\n");
+                    tnt::audio::shutdown_custom_audio();
+                    std::exit(0);
+                }
+                break;
+        }
+    } else if (g_menu_state.active_tab == 2) { // GRAPHICS
+        switch (g_menu_state.selected_row) {
+            case 0: // Antialiasing (MSAA)
+                if (pressed & 0x0100) g_menu_state.antialiasing = (g_menu_state.antialiasing + 1) % 4;
+                if (pressed & 0x0200) g_menu_state.antialiasing = (g_menu_state.antialiasing + 3) % 4;
+                if (pressed & 0x8000) g_menu_state.antialiasing = (g_menu_state.antialiasing + 1) % 4;
+                break;
+            case 1: // Texture Filtering
+                if (pressed & 0x0100) g_menu_state.filtering = (g_menu_state.filtering + 1) % 3;
+                if (pressed & 0x0200) g_menu_state.filtering = (g_menu_state.filtering + 2) % 3;
+                if (pressed & 0x8000) g_menu_state.filtering = (g_menu_state.filtering + 1) % 3;
+                break;
+            case 2: // 2D UI Upscale
+                if (pressed & 0x0100) g_menu_state.upscale_2d = (g_menu_state.upscale_2d + 1) % 3;
+                if (pressed & 0x0200) g_menu_state.upscale_2d = (g_menu_state.upscale_2d + 2) % 3;
+                if (pressed & 0x8000) g_menu_state.upscale_2d = (g_menu_state.upscale_2d + 1) % 3;
+                break;
+            case 3: // FPS Overlay
+                if (pressed & (0x0200 | 0x0100 | 0x8000)) {
+                    g_menu_state.show_fps = !g_menu_state.show_fps;
+                }
+                break;
+            case 4: // Display Mode (Windowed / Fullscreen)
+                if (pressed & (0x0200 | 0x0100 | 0x8000)) {
+                    g_menu_state.fullscreen = !g_menu_state.fullscreen;
+                }
+                break;
+            case 5: // Save & Return
+                if (pressed & (0x8000 | 0x1000)) {
+                    exit_menu = true;
+                }
+                break;
+        }
+    } else if (g_menu_state.active_tab == 3) { // DISCORD
+        switch (g_menu_state.selected_row) {
+            case 0: // Discord Webhook Toggle
+                if (pressed & (0x0200 | 0x0100 | 0x8000)) {
+                    g_menu_state.discord_enabled = !g_menu_state.discord_enabled;
+                }
+                break;
+            case 1: // Player Name (Display only or cycle)
+                break;
+            case 2: // Webhook status
+                break;
+            case 3: // Test Webhook
+                if (pressed & (0x8000 | 0x1000)) {
+                    const auto& s = tnt::settings();
+                    if (!s.discord_webhook.empty()) {
+                        std::string url = s.discord_webhook;
+                        std::string json = "{\"username\":\"The New Tetris: Reborn\",\"embeds\":[{\"title\":\"🔧 Webhook Test\",\"description\":\"Connection verified successfully from The New Tetris: Reborn!\",\"color\":65535}]}";
+                        std::thread([url, json]() {
+                            send_discord_webhook_post(url, json);
+                        }).detach();
+                        g_menu_state.test_post_sent = true;
+                    }
+                }
+                break;
+            case 4: // Save & Return
+                if (pressed & (0x8000 | 0x1000)) {
+                    exit_menu = true;
+                }
+                break;
+        }
     }
 
     if (pressed & 0x4000) { // B Button: Return / Back
@@ -412,16 +704,40 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
 
     if (exit_menu) {
         auto s = tnt::settings();
+
+        // Rules
+        const char* ruleset_keys[6] = { "tnt_original", "7_bag", "nes_1989", "tgm", "pure_random", "block_training" };
+        s.piece_ruleset = ruleset_keys[std::clamp(g_menu_state.piece_ruleset, 0, 5)];
+        s.block_training = g_menu_state.block_training;
         s.seeded_run = g_menu_state.seeded_run;
         char hex_buf[16];
         snprintf(hex_buf, sizeof(hex_buf), "0x%08X", g_menu_state.current_seed);
         s.custom_seed = hex_buf;
+
+        // Enhancements
         s.tournament_hud = g_menu_state.hud_enabled;
+        s.show_timer = g_menu_state.timer_enabled;
+        s.after_game_panel = g_menu_state.panel_enabled;
+        tnt_timer_enabled.store(s.show_timer);
+
+        // Graphics
+        const char* msaa_keys[4] = { "none", "2x", "4x", "8x" };
+        s.antialiasing = msaa_keys[std::clamp(g_menu_state.antialiasing, 0, 3)];
+        const char* filter_keys[3] = { "pixel_scaling", "linear", "nearest" };
+        s.filtering = filter_keys[std::clamp(g_menu_state.filtering, 0, 2)];
+        const char* upscale_keys[3] = { "scaled_only", "all", "original" };
+        s.upscale_2d = upscale_keys[std::clamp(g_menu_state.upscale_2d, 0, 2)];
+        s.show_fps = g_menu_state.show_fps;
+        s.fullscreen = g_menu_state.fullscreen;
+        tnt_overlay_enabled.store(s.show_fps);
+
+        // Discord
         s.enable_discord = g_menu_state.discord_enabled;
 
+        tnt::settings() = s;
         tnt::save_settings(tnt::settings_path(), s);
-        printf("[settings] Saved configuration: Seeded=%d Seed=%s Mode=%d Players=%d HUD=%d Discord=%d\n",
-               s.seeded_run, s.custom_seed.c_str(), g_menu_state.tournament_mode, g_menu_state.players, s.tournament_hud, s.enable_discord);
+        printf("[settings] Saved Master Menu configuration: Ruleset=%s Training=%d Seed=%s MSAA=%s HUD=%d Discord=%d\n",
+               s.piece_ruleset.c_str(), s.block_training, s.custom_seed.c_str(), s.antialiasing.c_str(), s.tournament_hud, s.enable_discord);
 
         // Apply mode and player count to RDRAM
         wr8(rdram, 0x800D5688, static_cast<uint8_t>(g_menu_state.tournament_mode));
@@ -434,7 +750,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
 
         // Transition back to Options Menu by triggering the game's native Scene 16 teardown (sub-state 2)
         wr32(rdram, 0x800D3330, 2);
-        return 0; // Return 0 so func_80083470 executes L_80083504 cleanly
+        return 0;
     }
 
     return 1;
@@ -448,6 +764,21 @@ namespace tnt::tournament {
         stats.active_seed = g_match_initial_seed.load();
         if (stats.active_seed == 0 && stats.seeded) {
             stats.active_seed = parse_seed_string(s.custom_seed);
+        }
+
+        // Active ruleset name for HUD
+        if (s.block_training || s.piece_ruleset == "block_training") {
+            snprintf(stats.ruleset_name, sizeof(stats.ruleset_name), "TRAINING");
+        } else if (s.piece_ruleset == "7_bag") {
+            snprintf(stats.ruleset_name, sizeof(stats.ruleset_name), "7-BAG");
+        } else if (s.piece_ruleset == "nes_1989") {
+            snprintf(stats.ruleset_name, sizeof(stats.ruleset_name), "NES 1989");
+        } else if (s.piece_ruleset == "tgm") {
+            snprintf(stats.ruleset_name, sizeof(stats.ruleset_name), "TGM");
+        } else if (s.piece_ruleset == "pure_random") {
+            snprintf(stats.ruleset_name, sizeof(stats.ruleset_name), "RANDOM");
+        } else {
+            snprintf(stats.ruleset_name, sizeof(stats.ruleset_name), "TNT ORIG");
         }
 
         if (!rdram) return stats;
@@ -465,22 +796,18 @@ namespace tnt::tournament {
 
         uint32_t frames = rd32(rdram, GAME_FRAMES_ADDR);
         if (frames == 0 || frames > 60u * 60 * 60 * 24) {
-            stats.in_game = false;
-            return stats;
+            // Only drop out if the frame counter is zeroed before any game started
+            static uint32_t s_last_known_frames = 0;
+            if (s_last_known_frames == 0) {
+                stats.in_game = false;
+                return stats;
+            }
+            frames = s_last_known_frames;
         }
 
-        // Liveness check: verify game frame counter is actively advancing
-        static uint32_t s_prev_frames = 0;
-        static uint64_t s_last_advance_frame = 0;
-        if (frames != s_prev_frames) {
-            s_prev_frames = frames;
-            s_last_advance_frame = frame;
-        } else if (frame > s_last_advance_frame + 60) {
-            // Frames stopped advancing for > 1.0s (Game Over, Quit to Menu, or Paused)
-            stats.in_game = false;
-            return stats;
-        }
-
+        // HUD Latch: During Game Over, the match scene is still active and the user is viewing
+        // results awaiting input. We intentionally maintain stats.in_game = true until the scene
+        // changes back to menu (scene != 9, 12, 14).
         stats.in_game = true;
         g_is_in_match.store(true);
         stats.game_seconds = frames / 60;
@@ -544,6 +871,8 @@ namespace tnt::tournament {
 
         const char* mode_name = (mode == 0) ? "Marathon" : (mode == 1 ? "Sprint" : "Ultra");
 
+        std::string player_disp = s.discord_player_name.empty() ? name : s.discord_player_name;
+
         std::ostringstream json;
         json << "{"
              << "\"username\":\"The New Tetris: Reborn\","
@@ -551,16 +880,17 @@ namespace tnt::tournament {
              << "\"title\":\"🏆 Match Result - " << mode_name << "\","
              << "\"color\":16763904," // Gold hex color
              << "\"fields\":["
-             << "{\"name\":\"Player\",\"value\":\"" << name << "\",\"inline\":true},"
+             << "{\"name\":\"Player\",\"value\":\"" << player_disp << "\",\"inline\":true},"
              << "{\"name\":\"Time\",\"value\":\"" << (seconds / 60) << ":" << (seconds % 60 < 10 ? "0" : "") << (seconds % 60) << "\",\"inline\":true},"
              << "{\"name\":\"Score Lines\",\"value\":\"" << score << "\",\"inline\":true},"
              << "{\"name\":\"True Lines\",\"value\":\"" << true_lines << "\",\"inline\":true},"
              << "{\"name\":\"LPM\",\"value\":\"" << std::fixed << lpm << "\",\"inline\":true},"
-             << "{\"name\":\"Total Blocks\",\"value\":\"" << cubes << "\",\"inline\":true}," << std::endl
-             << "             {\"name\":\"Gold Blocks\",\"value\":\"" << g_live_gold_cubes.load() << "\",\"inline\":true}," << std::endl
-             << "             {\"name\":\"Silver Blocks\",\"value\":\"" << g_live_silver_cubes.load() << "\",\"inline\":true}," << std::endl
-             << "             {\"name\":\"Gold Lines\",\"value\":\"" << g_live_gold_lines.load() << "\",\"inline\":true}," << std::endl
-             << "             {\"name\":\"Silver Lines\",\"value\":\"" << g_live_silver_lines.load() << "\",\"inline\":true},"
+             << "{\"name\":\"Total Blocks\",\"value\":\"" << cubes << "\",\"inline\":true},"
+             << "{\"name\":\"Gold Blocks\",\"value\":\"" << g_live_gold_cubes.load() << "\",\"inline\":true},"
+             << "{\"name\":\"Silver Blocks\",\"value\":\"" << g_live_silver_cubes.load() << "\",\"inline\":true},"
+             << "{\"name\":\"Gold Lines\",\"value\":\"" << g_live_gold_lines.load() << "\",\"inline\":true},"
+             << "{\"name\":\"Silver Lines\",\"value\":\"" << g_live_silver_lines.load() << "\",\"inline\":true},"
+             << "{\"name\":\"Ruleset\",\"value\":\"`" << (s.block_training ? "BlockTraining" : s.piece_ruleset) << "`\",\"inline\":true},"
              << "{\"name\":\"Seed\",\"value\":\"`0x" << std::uppercase << std::hex << seed << "`" << (s.seeded_run ? " (Seeded)" : " (Random)") << "\",\"inline\":false}"
              << "]"
              << "}]"

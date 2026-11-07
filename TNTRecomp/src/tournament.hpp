@@ -20,6 +20,7 @@ namespace tnt::tournament {
         bool in_game = false;
         bool seeded = false;
         char mode_name[16] = "MARATHON";
+        char ruleset_name[24] = "TNT ORIG";
         char timer_str[16] = "0:00";
     };
 
@@ -31,16 +32,37 @@ namespace tnt::tournament {
     // Post scores to Discord webhook on match completion
     void on_match_finish(int mode, const std::string& name, uint32_t score, uint32_t true_lines, uint32_t seconds);
 
-    // Tournament In-Game Options Menu
+    // Master Settings In-Game Menu (Scene 16)
     bool is_options_menu_open();
     struct MenuRenderState {
+        int active_tab = 0; // 0: RULES, 1: ENHANCEMENTS, 2: GRAPHICS, 3: DISCORD
         int selected_row = 0;
-        int tournament_mode = 0; // 0: Marathon, 1: Sprint, 2: Ultra
-        int players = 1;         // 1: 1 Player, 2: 2 Players
+
+        // Tab 0: Rules
+        int piece_ruleset = 0; // 0: TNT ORIG, 1: MODERN 7-BAG, 2: NES 1989, 3: TGM, 4: PURE RANDOM, 5: BLOCK TRAINING
+        bool block_training = false;
         bool seeded_run = false;
         uint32_t current_seed = 0x12345678;
+        int tournament_mode = 0; // 0: Marathon, 1: Sprint, 2: Ultra
+        int players = 1;         // 1: 1 Player, 2: 2 Players
+
+        // Tab 1: Enhancements
         bool hud_enabled = true;
+        bool timer_enabled = true;
+        bool panel_enabled = true;
+
+        // Tab 2: Graphics
+        int antialiasing = 3;    // 0: OFF, 1: 2X, 2: 4X, 3: 8X
+        int filtering = 0;       // 0: SCALING, 1: LINEAR, 2: NEAREST
+        int upscale_2d = 0;      // 0: SCALED ONLY, 1: ALL, 2: ORIGINAL
+        bool show_fps = true;
+        bool fullscreen = false;
+
+        // Tab 3: Discord
         bool discord_enabled = false;
+        char player_name[32] = "Player 1";
+        bool webhook_set = false;
+        bool test_post_sent = false;
     };
     MenuRenderState get_menu_render_state();
 }
@@ -49,6 +71,7 @@ namespace tnt::tournament {
 extern "C" {
     void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx);
     void tnt_on_match_piece_init(uint8_t* rdram, recomp_context* ctx);
+    void tnt_on_pieces_generated(uint8_t* rdram, uint32_t player);
     void tnt_on_bag_generate(uint8_t* rdram, recomp_context* ctx);
     void tnt_on_cube_formed(uint8_t* rdram, recomp_context* ctx);
     void tnt_on_line_cleared(uint8_t* rdram, recomp_context* ctx);

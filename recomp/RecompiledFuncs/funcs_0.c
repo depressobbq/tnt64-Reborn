@@ -8445,6 +8445,7 @@ L_8003E1C0:
     ctx->r18 = MEM_W(ctx->r29, 0X20);
     // 0x8003E1D0: jr          $ra
     // 0x8003E1D4: addiu       $sp, $sp, 0x38
+    tnt_on_pieces_generated(rdram, MEM_W(ctx->r29, 0X38));
     ctx->r29 = ADD32(ctx->r29, 0X38);
     return;
     // 0x8003E1D4: addiu       $sp, $sp, 0x38

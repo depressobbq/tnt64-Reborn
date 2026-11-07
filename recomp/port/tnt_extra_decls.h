@@ -18,6 +18,7 @@ void tnt_osContInit(uint8_t* rdram, recomp_context* ctx);       // tnt_cont_fix.
 void tnt_osContGetQuery(uint8_t* rdram, recomp_context* ctx);   // tnt_cont_fix.c
 void tnt_on_game_result(uint8_t* rdram, recomp_context* ctx);   // TNTRecomp/src/leaderboard.cpp
 void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/tournament.cpp
+void tnt_on_pieces_generated(uint8_t* rdram, uint32_t player);      // TNTRecomp/src/tournament.cpp
 void tnt_on_cube_formed(uint8_t* rdram, recomp_context* ctx);     // TNTRecomp/src/tournament.cpp
 void tnt_on_line_cleared(uint8_t* rdram, recomp_context* ctx);    // TNTRecomp/src/tournament.cpp
 int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/tournament.cpp
