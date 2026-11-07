@@ -505,11 +505,19 @@ extern "C" void tnt_sync_player_profile(uint8_t* rdram, recomp_context* ctx) {
     const auto& s = tnt::settings();
     std::string raw_name = s.discord_player_name.empty() ? "PLAYER 1" : s.discord_player_name;
 
+    // Strip leading '@' symbols for N64 save block because N64 font textures
+    // do not contain '@' and in-game name slots are 8 uppercase alphanumeric characters
+    std::string clean_raw = raw_name;
+    while (!clean_raw.empty() && (clean_raw.front() == '@' || clean_raw.front() == ' ')) {
+        clean_raw.erase(clean_raw.begin());
+    }
+
     std::string target_name;
-    for (char ch : raw_name) {
+    for (char ch : clean_raw) {
         if (target_name.size() == 8) break;
         char c = (char)::toupper((unsigned char)ch);
-        if (c >= 0x20 && c <= 0x5F) {
+        // Only accept A-Z, 0-9, and standard punctuation/spaces supported by TNT ROM font
+                if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == ' ' || c == '.' || c == '-' || c == '!' || c == '?') {
             target_name += c;
         }
     }
@@ -927,6 +935,11 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
                     std::string cfg_name = tnt::settings().discord_player_name;
                     if (!cfg_name.empty()) names.push_back(cfg_name);
 
+                    std::string clean_cfg = cfg_name;
+                    while (!clean_cfg.empty() && (clean_cfg.front() == '@' || clean_cfg.front() == ' ')) clean_cfg.erase(clean_cfg.begin());
+                    for (auto& c : clean_cfg) c = (char)::toupper((unsigned char)c);
+                    if (clean_cfg.size() > 8) clean_cfg.resize(8);
+
                     uint32_t block = rd32(rdram, 0x8011FCF0);
                     if (block >= 0x80000000u && block + 0x1900 <= 0x80800000u) {
                         uint32_t mask = rd32(rdram, block);
@@ -948,7 +961,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
                                 std::string n;
                                 for (int k = 0; k < 8; k++) n += (char)(chs[k] + 0x20);
                                 while (!n.empty() && n.back() == ' ') n.pop_back();
-                                if (!n.empty() && std::find(names.begin(), names.end(), n) == names.end()) {
+                                if (!n.empty() && n != clean_cfg && std::find(names.begin(), names.end(), n) == names.end()) {
                                     names.push_back(n);
                                 }
                             }

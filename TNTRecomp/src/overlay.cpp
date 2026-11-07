@@ -154,6 +154,8 @@ namespace {
         { '[', { 0x0E, 0x08, 0x08, 0x08, 0x08, 0x08, 0x0E } },
         { ']', { 0x0E, 0x02, 0x02, 0x02, 0x02, 0x02, 0x0E } },
         { '|', { 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04 } },
+        { '@', { 0x0E, 0x11, 0x17, 0x15, 0x16, 0x10, 0x0F } },
+        { '_', { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1F } },
     };
     const uint8_t* glyph(char c) {
         if (c >= 'a' && c <= 'z') c = char(c - 'a' + 'A');
@@ -185,9 +187,9 @@ namespace {
     }
 
     std::string fmt_time(uint32_t s) { char b[16]; snprintf(b, sizeof(b), "%u:%02u", s / 60, s % 60); return b; }
-    std::string row_text(const char* rank, const std::string& name, uint32_t score, uint32_t seconds) {
-        char b[64];
-        snprintf(b, sizeof(b), "%-2s %-8.8s %5u %6s", rank, name.c_str(), score, fmt_time(seconds).c_str());
+    std::string row_text(const char* rank, const std::string& name, uint32_t score, uint32_t seconds, int name_w = 8) {
+        char b[128];
+        snprintf(b, sizeof(b), "%-2s %-*.*s %5u %6s", rank, name_w, name_w, name.c_str(), score, fmt_time(seconds).c_str());
         return b;
     }
 
@@ -195,29 +197,67 @@ namespace {
     // The game's high-score table for the mode just played, with this game's players highlighted.
     void draw_panel(DlWriter& w, uint32_t cimg0, int width, int height, const tnt::leaderboard::Panel& p) {
         const int s = width >= 640 ? 2 : 1;            // pixel size
-        const int cw = 6 * s, lh = 10 * s, cols = 24;
+        const int cw = 6 * s, lh = 10 * s;
+
+        // Determine name column width dynamically (support 8 up to 16 characters)
+        int max_name_len = 8;
+        for (const auto& e : p.table) {
+            max_name_len = std::max(max_name_len, (int)e.name.size());
+        }
+        for (const auto& r : p.results) {
+            max_name_len = std::max(max_name_len, (int)r.name.size());
+        }
+        int name_w = std::clamp(max_name_len, 8, 16);
+        int cols = std::max(2 + 1 + name_w + 1 + 5 + 1 + 6, 24);
+
         struct Line { std::string text; int color; };   // 0 white, 1 gold, 2 grey, 3 highlight
         std::vector<Line> lines;
         std::string title = std::string(tnt::leaderboard::mode_name(p.mode)) + " HIGH SCORES";
         for (auto& c : title) c = char(toupper((unsigned char)c));
-        lines.push_back({ std::string((cols - title.size()) / 2, ' ') + title, 1 });
+        cols = std::max(cols, (int)title.size() + 2);
+        int pad = std::max(0, (cols - (int)title.size()) / 2);
+        lines.push_back({ std::string(pad, ' ') + title, 1 });
+
+        auto names_match = [](const std::string& table_name, const std::string& res_name) -> bool {
+            if (table_name == res_name) return true;
+            std::string t = table_name;
+            while (!t.empty() && (t.back() == ' ' || t.back() == '\0')) t.pop_back();
+            std::string r = res_name;
+            while (!r.empty() && r.front() == '@') r.erase(r.begin());
+            while (!r.empty() && (r.back() == ' ' || r.back() == '\0')) r.pop_back();
+            if (t.empty() || r.empty()) return false;
+            size_t len = std::min({ t.size(), r.size(), (size_t)8 });
+            for (size_t i = 0; i < len; i++) {
+                if (::toupper((unsigned char)t[i]) != ::toupper((unsigned char)r[i])) return false;
+            }
+            return true;
+        };
 
         std::vector<bool> placed(p.results.size(), false);
         for (size_t i = 0; i < std::size(p.table); i++) {
             const auto& e = p.table[i];
             int match = -1;
-            for (size_t r = 0; r < p.results.size(); r++)
-                if (!placed[r] && e.score == p.results[r].score && e.seconds == p.results[r].seconds && e.name == p.results[r].name) { match = int(r); break; }
+            for (size_t r = 0; r < p.results.size(); r++) {
+                if (!placed[r] && e.score == p.results[r].score && e.seconds == p.results[r].seconds && names_match(e.name, p.results[r].name)) {
+                    match = int(r);
+                    break;
+                }
+            }
             char rank[4]; snprintf(rank, sizeof(rank), "%d.", int(i + 1));
-            if (match >= 0) { placed[match] = true; lines.push_back({ row_text(rank, e.name, e.score, e.seconds), 3 }); }
-            else lines.push_back({ row_text(rank, e.name, e.score, e.seconds), 0 });
+            if (match >= 0) {
+                placed[match] = true;
+                lines.push_back({ row_text(rank, p.results[match].name, e.score, e.seconds, name_w), 3 });
+            } else {
+                lines.push_back({ row_text(rank, e.name, e.score, e.seconds, name_w), 0 });
+            }
         }
         bool any_unplaced = false;
         for (bool b : placed) if (!b) any_unplaced = true;
         if (any_unplaced) {
             lines.push_back({ "", 0 });
-            for (size_t r = 0; r < p.results.size(); r++)
-                if (!placed[r]) lines.push_back({ row_text("-", p.results[r].name, p.results[r].score, p.results[r].seconds), 3 });
+            for (size_t r = 0; r < p.results.size(); r++) {
+                if (!placed[r]) lines.push_back({ row_text("-", p.results[r].name, p.results[r].score, p.results[r].seconds, name_w), 3 });
+            }
         }
 
         int pw = cols * cw + 16 * s, ph = int(lines.size()) * lh + 14 * s;
@@ -397,7 +437,12 @@ namespace {
         lines.push_back({ " [L/R] SWITCH TAB   [D-PAD] ADJUST", 2 });
         lines.push_back({ " [A] SELECT/TOGGLE  [B] SAVE & RETURN", 2 });
 
-        int pw = cols * cw + 24 * s, ph = int(lines.size()) * lh + 20 * s;
+        int menu_cols = cols;
+        for (const auto& l : lines) {
+            if ((int)l.text.size() + 2 > menu_cols) menu_cols = (int)l.text.size() + 2;
+        }
+
+        int pw = menu_cols * cw + 24 * s, ph = int(lines.size()) * lh + 20 * s;
         int x0 = (width - pw) / 2, y0 = (height - ph) / 2;
         if (x0 < 0 || y0 < 0) return;
 

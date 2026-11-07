@@ -290,13 +290,17 @@ extern "C" void tnt_on_game_result(uint8_t* rdram, recomp_context* ctx) {
     g.mode = mode < 3 ? mode : 0;
     g.players = std::clamp<int>(rd8(rdram, results + 5), 1, 4);
     g.player = (int)idx;
-    g.name = valid_addr(profile, 8) ? rd_name(rdram, profile) : "";
-    if (g.name.empty()) {
-        const auto& s = tnt::settings();
-        if (!s.discord_player_name.empty()) {
-            g.name = s.discord_player_name;
-        } else {
-            return; // no profile name and no discord handle configured
+    const auto& s = tnt::settings();
+    if (idx == 0 && !s.discord_player_name.empty()) {
+        g.name = s.discord_player_name;
+    } else {
+        g.name = valid_addr(profile, 8) ? rd_name(rdram, profile) : "";
+        if (g.name.empty()) {
+            if (!s.discord_player_name.empty()) {
+                g.name = s.discord_player_name;
+            } else {
+                return; // no profile name and no discord handle configured
+            }
         }
     }
     g.seconds = rd32(rdram, results + 0x08 + 4 * idx);
