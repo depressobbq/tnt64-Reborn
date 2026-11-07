@@ -257,7 +257,7 @@ extern "C" void tnt_on_pieces_generated(uint8_t* rdram, uint32_t player) {
 
     auto next_rand = [&rng_state]() -> uint32_t {
         rng_state = rng_state * 1664525u + 1013904223u;
-        return rng_state;
+        return (rng_state >> 16);
     };
 
     uint8_t pieces[400];
