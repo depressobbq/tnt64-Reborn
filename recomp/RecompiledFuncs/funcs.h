@@ -804,6 +804,7 @@ void func_8007BCC4(uint8_t* rdram, recomp_context* ctx);
 void func_8007BD48(uint8_t* rdram, recomp_context* ctx);
 void func_8007BDD8(uint8_t* rdram, recomp_context* ctx);
 void func_8007C0EC(uint8_t* rdram, recomp_context* ctx);
+void tnt_sync_player_profile(uint8_t* rdram, recomp_context* ctx);
 void func_8007C5CC(uint8_t* rdram, recomp_context* ctx);
 void func_8007C650(uint8_t* rdram, recomp_context* ctx);
 void func_8007C8B0(uint8_t* rdram, recomp_context* ctx);

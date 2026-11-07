@@ -11451,6 +11451,7 @@ L_8007C5B0:
     // 0x8007C5C4: jr          $ra
     // 0x8007C5C8: sb          $t9, -0x1108($at)
     MEM_B(-0X1108, ctx->r1) = ctx->r25;
+    tnt_sync_player_profile(rdram, ctx);
     return;
     // 0x8007C5C8: sb          $t9, -0x1108($at)
     MEM_B(-0X1108, ctx->r1) = ctx->r25;

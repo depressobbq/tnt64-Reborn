@@ -74,6 +74,7 @@ namespace tnt::tournament {
 // Interface functions invoked from recompiled code
 extern "C" {
     void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx);
+    void tnt_sync_player_profile(uint8_t* rdram, recomp_context* ctx);
     void tnt_on_match_piece_init(uint8_t* rdram, recomp_context* ctx);
     void tnt_on_pieces_generated(uint8_t* rdram, uint32_t player);
     void tnt_on_bag_generate(uint8_t* rdram, recomp_context* ctx);

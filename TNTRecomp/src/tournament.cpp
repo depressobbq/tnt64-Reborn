@@ -20,6 +20,11 @@
 extern std::atomic<bool> tnt_overlay_enabled;
 extern std::atomic<bool> tnt_timer_enabled;
 
+extern "C" {
+    void func_8007A6C4(uint8_t* rdram, recomp_context* ctx);
+    void func_8007C5CC(uint8_t* rdram, recomp_context* ctx);
+}
+
 namespace {
     std::atomic<uint32_t> g_match_initial_seed{ 0x12345678 };
     std::atomic<uint32_t> g_bag_counter{ 0 };
@@ -493,6 +498,177 @@ extern "C" void tnt_on_bag_generate(uint8_t* rdram, recomp_context* ctx) {
     }
 }
 
+extern "C" void tnt_sync_player_profile(uint8_t* rdram, recomp_context* ctx) {
+    if (!rdram) return;
+
+    uint32_t save_block = rd32(rdram, 0x8011FCF0);
+    if (save_block < 0x80000000u || save_block + 0x1900 > 0x80800000u) {
+        return;
+    }
+
+    const auto& s = tnt::settings();
+    std::string raw_name = s.discord_player_name.empty() ? "PLAYER 1" : s.discord_player_name;
+
+    std::string target_name;
+    for (char ch : raw_name) {
+        if (target_name.size() == 8) break;
+        char c = (char)::toupper((unsigned char)ch);
+        if (c >= 0x20 && c <= 0x5F) {
+            target_name += c;
+        }
+    }
+    while (!target_name.empty() && target_name.back() == ' ') target_name.pop_back();
+    if (target_name.empty()) target_name = "PLAYER 1";
+
+    constexpr uint32_t PLAYER0_PROFILE = 0x8011EB3C;
+    constexpr uint32_t PLAYER0_MGR = 0x800D2D80;
+    constexpr uint32_t PLAYER_PTR_TABLE = 0x8011EB2C;
+
+    // Fast check: if Player 0 is already active with target_name, no save/rebind needed
+    uint32_t curr_p0 = rd32(rdram, PLAYER0_MGR + 0xC);
+    if (curr_p0 == PLAYER0_PROFILE && rd32(rdram, PLAYER_PTR_TABLE) == PLAYER0_PROFILE) {
+        char existing[9] = { 0 };
+        for (int k = 0; k < 8; k++) existing[k] = (char)rd8(rdram, PLAYER0_PROFILE + k);
+        std::string ex_str = existing;
+        while (!ex_str.empty() && ex_str.back() == ' ') ex_str.pop_back();
+        if (ex_str == target_name) {
+            return;
+        }
+    }
+
+    auto unpack_slot_name = [&](uint32_t slot_addr) -> std::string {
+        uint8_t b[6];
+        for (int k = 0; k < 6; k++) b[k] = rd8(rdram, slot_addr + k);
+        uint8_t chars[8] = {
+            (uint8_t)((b[0] >> 2) & 0x3F),
+            (uint8_t)(((b[0] & 0x3) << 4) | ((b[1] >> 4) & 0xF)),
+            (uint8_t)(((b[1] & 0xF) << 2) | ((b[2] >> 6) & 0x3)),
+            (uint8_t)(b[2] & 0x3F),
+            (uint8_t)((b[3] >> 2) & 0x3F),
+            (uint8_t)(((b[3] & 0x3) << 4) | ((b[4] >> 4) & 0xF)),
+            (uint8_t)(((b[4] & 0xF) << 2) | ((b[5] >> 6) & 0x3)),
+            (uint8_t)(b[5] & 0x3F)
+        };
+        std::string res;
+        for (int k = 0; k < 8; k++) res += (char)(chars[k] + 0x20);
+        while (!res.empty() && res.back() == ' ') res.pop_back();
+        return res;
+    };
+
+    auto pack_slot_name = [&](const std::string& name, uint8_t b[6]) {
+        std::string padded = name;
+        while (padded.size() < 8) padded += ' ';
+        uint8_t chars[8];
+        for (int k = 0; k < 8; k++) {
+            char c = padded[k];
+            if (c < 0x20 || c > 0x5F) c = ' ';
+            chars[k] = (uint8_t)(c - 0x20);
+        }
+        b[0] = (chars[0] << 2) | (chars[1] >> 4);
+        b[1] = ((chars[1] & 0xF) << 4) | (chars[2] >> 2);
+        b[2] = ((chars[2] & 0x3) << 6) | chars[3];
+        b[3] = (chars[4] << 2) | (chars[5] >> 4);
+        b[4] = ((chars[5] & 0xF) << 4) | (chars[6] >> 2);
+        b[5] = ((chars[6] & 0x3) << 6) | chars[7];
+    };
+
+    auto compute_checksum = [&](uint32_t block) -> uint32_t {
+        uint32_t sum = 0;
+        for (uint32_t k = 0; k < 0x18FC; k += 4) {
+            uint8_t b0 = rd8(rdram, block + k);
+            uint8_t b1 = rd8(rdram, block + k + 1);
+            uint8_t b2 = rd8(rdram, block + k + 2);
+            uint8_t b3 = rd8(rdram, block + k + 3);
+            sum = (sum + (b0 ^ 0x10)) - b2;
+            sum = (sum + (b1 ^ 0x20)) - ((uint32_t)b3 << 1);
+        }
+        return sum;
+    };
+
+    uint32_t active_mask = rd32(rdram, save_block);
+    int matched_slot = -1;
+    int first_free_slot = -1;
+
+    for (int i = 0; i < 32; i++) {
+        if (active_mask & (1u << i)) {
+            if (unpack_slot_name(save_block + 4 + i * 0x78) == target_name) {
+                matched_slot = i;
+                break;
+            }
+        } else if (first_free_slot == -1) {
+            first_free_slot = i;
+        }
+    }
+
+    bool newly_created = false;
+    if (matched_slot == -1) {
+        matched_slot = (first_free_slot != -1) ? first_free_slot : 0;
+        uint32_t slot_addr = save_block + 4 + matched_slot * 0x78;
+
+        uint8_t b[6];
+        pack_slot_name(target_name, b);
+        for (int k = 0; k < 6; k++) wr8(rdram, slot_addr + k, b[k]);
+
+        uint8_t s1 = static_cast<uint8_t>(((matched_slot + 1) * 37) & 0xFF);
+        uint8_t s2 = static_cast<uint8_t>(((matched_slot + 1) * 73) & 0xFF);
+        wr8(rdram, slot_addr + 6, s1);
+        wr8(rdram, slot_addr + 7, s2);
+        for (int k = 8; k < 0x78; k++) wr8(rdram, slot_addr + k, 0);
+
+        active_mask |= (1u << matched_slot);
+        wr32(rdram, save_block, active_mask);
+
+        uint32_t sum = compute_checksum(save_block);
+        wr32(rdram, save_block + 0x18FC, sum);
+
+        newly_created = true;
+    }
+
+    uint32_t slot_addr = save_block + 4 + matched_slot * 0x78;
+    uint8_t salt1 = rd8(rdram, slot_addr + 6);
+    uint8_t salt2 = rd8(rdram, slot_addr + 7);
+    if (salt1 == 0 && salt2 == 0) {
+        salt1 = static_cast<uint8_t>(((matched_slot + 1) * 37) & 0xFF);
+        salt2 = static_cast<uint8_t>(((matched_slot + 1) * 73) & 0xFF);
+        wr8(rdram, slot_addr + 6, salt1);
+        wr8(rdram, slot_addr + 7, salt2);
+    }
+
+    for (int k = 0; k < 8; k++) {
+        char c = (k < (int)target_name.size()) ? target_name[k] : ' ';
+        wr8(rdram, PLAYER0_PROFILE + k, (uint8_t)c);
+        wr8(rdram, PLAYER0_MGR + k, (uint8_t)c);
+    }
+    wr8(rdram, PLAYER0_PROFILE + 8, 0);
+    wr8(rdram, PLAYER0_MGR + 8, 0);
+    wr8(rdram, PLAYER0_PROFILE + 9, salt1);
+    wr8(rdram, PLAYER0_PROFILE + 0xA, salt2);
+    wr8(rdram, PLAYER0_MGR + 9, salt1);
+    wr8(rdram, PLAYER0_MGR + 0xA, salt2);
+
+    wr32(rdram, PLAYER0_MGR + 0xC, PLAYER0_PROFILE);
+    wr8(rdram, PLAYER0_MGR + 0xB, 0xD);
+    wr8(rdram, PLAYER0_PROFILE + 0xD4, 0xD);
+    wr8(rdram, PLAYER0_PROFILE + 0xD0, 1);
+    wr32(rdram, PLAYER_PTR_TABLE, PLAYER0_PROFILE);
+
+    printf("[profile] Synced profile slot %d ('%s') to Player 0 in RDRAM (newly_created=%d)\n",
+           matched_slot, target_name.c_str(), newly_created ? 1 : 0);
+
+    if (ctx) {
+        recomp_context call_ctx = *ctx;
+        call_ctx.r4 = PLAYER0_PROFILE;
+        call_ctx.r5 = PLAYER0_MGR;
+        call_ctx.r6 = 0xD;
+        func_8007A6C4(rdram, &call_ctx);
+
+        if (newly_created) {
+            call_ctx.r4 = save_block;
+            func_8007C5CC(rdram, &call_ctx);
+        }
+    }
+}
+
 extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
     if (!rdram) return;
     (void)ctx;
@@ -533,10 +709,12 @@ extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
         g_match_initial_seed.store(seed);
         printf("[seed] Random seed: 0x%08X\n", seed);
     }
+    tnt_sync_player_profile(rdram, ctx);
 }
 
 extern "C" void tnt_on_match_start(uint8_t* rdram, recomp_context* ctx) {
     tnt_apply_seed_override(rdram, ctx);
+    tnt_sync_player_profile(rdram, ctx);
 }
 
 extern "C" void tnt_on_cube_formed(uint8_t* rdram, recomp_context* ctx) {
@@ -807,8 +985,57 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
                     g_menu_state.discord_enabled = !g_menu_state.discord_enabled;
                 }
                 break;
-            case 1: // Player Name (Display only or cycle)
+            case 1: { // Player Name (Cycle through active save block names or Discord handle)
+                if (pressed & (0x0200 | 0x0100)) { // Left or Right
+                    std::vector<std::string> names;
+                    std::string cfg_name = tnt::settings().discord_player_name;
+                    if (!cfg_name.empty()) names.push_back(cfg_name);
+
+                    uint32_t block = rd32(rdram, 0x8011FCF0);
+                    if (block >= 0x80000000u && block + 0x1900 <= 0x80800000u) {
+                        uint32_t mask = rd32(rdram, block);
+                        for (int i = 0; i < 32; i++) {
+                            if (mask & (1u << i)) {
+                                uint32_t slot_addr = block + 4 + i * 0x78;
+                                uint8_t b[6];
+                                for (int k = 0; k < 6; k++) b[k] = rd8(rdram, slot_addr + k);
+                                uint8_t chs[8] = {
+                                    (uint8_t)((b[0] >> 2) & 0x3F),
+                                    (uint8_t)(((b[0] & 0x3) << 4) | ((b[1] >> 4) & 0xF)),
+                                    (uint8_t)(((b[1] & 0xF) << 2) | ((b[2] >> 6) & 0x3)),
+                                    (uint8_t)(b[2] & 0x3F),
+                                    (uint8_t)((b[3] >> 2) & 0x3F),
+                                    (uint8_t)(((b[3] & 0x3) << 4) | ((b[4] >> 4) & 0xF)),
+                                    (uint8_t)(((b[4] & 0xF) << 2) | ((b[5] >> 6) & 0x3)),
+                                    (uint8_t)(b[5] & 0x3F)
+                                };
+                                std::string n;
+                                for (int k = 0; k < 8; k++) n += (char)(chs[k] + 0x20);
+                                while (!n.empty() && n.back() == ' ') n.pop_back();
+                                if (!n.empty() && std::find(names.begin(), names.end(), n) == names.end()) {
+                                    names.push_back(n);
+                                }
+                            }
+                        }
+                    }
+                    if (names.empty()) names.push_back("PLAYER 1");
+
+                    int cur_idx = 0;
+                    for (size_t i = 0; i < names.size(); i++) {
+                        if (names[i] == g_menu_state.discord_player_name) {
+                            cur_idx = (int)i;
+                            break;
+                        }
+                    }
+                    if (pressed & 0x0100) { // Right
+                        cur_idx = (cur_idx + 1) % (int)names.size();
+                    } else { // Left
+                        cur_idx = (cur_idx + (int)names.size() - 1) % (int)names.size();
+                    }
+                    g_menu_state.discord_player_name = names[cur_idx];
+                }
                 break;
+            }
             case 2: // Webhook status
                 break;
             case 3: // Test Webhook
@@ -867,12 +1094,14 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
 
         // Discord
         s.enable_discord = g_menu_state.discord_enabled;
+        s.discord_player_name = g_menu_state.discord_player_name;
 
         tnt::settings() = s;
         tnt::save_settings(tnt::settings_path(), s);
         tnt::set_fullscreen(s.fullscreen);
         tnt::apply_runtime_gfx_settings();
         tnt::reset_piece_generator();
+        tnt_sync_player_profile(rdram, ctx);
         printf("[settings] Saved Master Menu configuration: Ruleset=%s Training=%d Seed=%s MSAA=%s HUD=%d Discord=%d Fullscreen=%d\n",
                s.piece_ruleset.c_str(), s.block_training, s.custom_seed.c_str(), s.antialiasing.c_str(), s.tournament_hud, s.enable_discord, s.fullscreen);
 

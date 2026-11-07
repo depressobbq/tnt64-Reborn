@@ -18,6 +18,7 @@
 //     results +0x28 + 4*i  u32 lines actually cleared
 #include "leaderboard.hpp"
 #include "tournament.hpp"
+#include "settings.hpp"
 namespace tnt { std::filesystem::path data_folder(); } // main.cpp
 #include "recomp.h"
 
@@ -290,7 +291,14 @@ extern "C" void tnt_on_game_result(uint8_t* rdram, recomp_context* ctx) {
     g.players = std::clamp<int>(rd8(rdram, results + 5), 1, 4);
     g.player = (int)idx;
     g.name = valid_addr(profile, 8) ? rd_name(rdram, profile) : "";
-    if (g.name.empty()) return; // the game only calls this for saved names, not guests
+    if (g.name.empty()) {
+        const auto& s = tnt::settings();
+        if (!s.discord_player_name.empty()) {
+            g.name = s.discord_player_name;
+        } else {
+            return; // no profile name and no discord handle configured
+        }
+    }
     g.seconds = rd32(rdram, results + 0x08 + 4 * idx);
     g.score = rd32(rdram, results + 0x18 + 4 * idx);
     g.lines = rd32(rdram, results + 0x28 + 4 * idx);
