@@ -678,7 +678,12 @@ extern "C" void tnt_on_line_cleared(uint8_t* rdram, recomp_context* ctx) {
     (void)rdram;
     if (ctx) {
         uint32_t clear_type = ctx->r6 & 0xFF;
-        if (clear_type == 3 || clear_type == 4) {
+        // In The New Tetris line clear logic (func_800698E0 / func_800696F4):
+        //   clear_type == 1: Normal line clear
+        //   clear_type == 2: Silver line clear (line contains multi-block pieces)
+        //   clear_type == 3: Gold line clear (line contains mono-block pieces)
+        //   clear_type == 4: Tetris clear (4 lines cleared with I-piece)
+        if (clear_type == 3) {
             g_live_gold_lines.fetch_add(1);
         } else if (clear_type == 2) {
             g_live_silver_lines.fetch_add(1);
