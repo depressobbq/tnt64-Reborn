@@ -739,6 +739,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
             case 1: // Match Timer
                 if (pressed & (0x0200 | 0x0100 | 0x8000)) {
                     g_menu_state.timer_enabled = !g_menu_state.timer_enabled;
+                    tnt_timer_enabled.store(g_menu_state.timer_enabled);
                 }
                 break;
             case 2: // After-Game Panel
@@ -765,6 +766,11 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
                 if (pressed & 0x0100) g_menu_state.antialiasing = (g_menu_state.antialiasing + 1) % 4;
                 if (pressed & 0x0200) g_menu_state.antialiasing = (g_menu_state.antialiasing + 3) % 4;
                 if (pressed & 0x8000) g_menu_state.antialiasing = (g_menu_state.antialiasing + 1) % 4;
+                if (pressed & (0x0100 | 0x0200 | 0x8000)) {
+                    const char* msaa_keys[4] = { "none", "2x", "4x", "8x" };
+                    tnt::settings().antialiasing = msaa_keys[std::clamp(g_menu_state.antialiasing, 0, 3)];
+                    tnt::apply_runtime_gfx_settings();
+                }
                 break;
             case 1: // Texture Filtering
                 if (pressed & 0x0100) g_menu_state.filtering = (g_menu_state.filtering + 1) % 3;
@@ -779,6 +785,7 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
             case 3: // FPS Overlay
                 if (pressed & (0x0200 | 0x0100 | 0x8000)) {
                     g_menu_state.show_fps = !g_menu_state.show_fps;
+                    tnt_overlay_enabled.store(g_menu_state.show_fps);
                 }
                 break;
             case 4: // Display Mode (Windowed / Fullscreen)

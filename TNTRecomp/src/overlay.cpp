@@ -385,7 +385,7 @@ namespace {
             snprintf(buf, sizeof(buf), "%s WEBHOOK URL:    <%s>", state.selected_row == 2 ? ">" : " ", state.webhook_set ? "CONFIGURED" : "NOT SET IN INI");
             lines.push_back({ buf, state.selected_row == 2 ? 1 : (state.webhook_set ? 4 : 2) });
 
-            const char* test_label = state.test_post_sent ? "< POST SENT! >" : "[A] SEND TEST POST";
+            const char* test_label = state.test_post_sent ? "< POST SENT! >" : (state.webhook_set ? "[A] SEND TEST POST" : "[SET IN INI]");
             snprintf(buf, sizeof(buf), "%s TEST WEBHOOK:   %s", state.selected_row == 3 ? ">" : " ", test_label);
             lines.push_back({ buf, state.selected_row == 3 ? 1 : (state.test_post_sent ? 4 : 0) });
 
