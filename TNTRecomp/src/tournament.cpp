@@ -20,11 +20,6 @@
 extern std::atomic<bool> tnt_overlay_enabled;
 extern std::atomic<bool> tnt_timer_enabled;
 
-extern "C" {
-    void func_8007A6C4(uint8_t* rdram, recomp_context* ctx);
-    void func_8007C5CC(uint8_t* rdram, recomp_context* ctx);
-}
-
 namespace {
     std::atomic<uint32_t> g_match_initial_seed{ 0x12345678 };
     std::atomic<uint32_t> g_bag_counter{ 0 };
@@ -655,18 +650,7 @@ extern "C" void tnt_sync_player_profile(uint8_t* rdram, recomp_context* ctx) {
     printf("[profile] Synced profile slot %d ('%s') to Player 0 in RDRAM (newly_created=%d)\n",
            matched_slot, target_name.c_str(), newly_created ? 1 : 0);
 
-    if (ctx) {
-        recomp_context call_ctx = *ctx;
-        call_ctx.r4 = PLAYER0_PROFILE;
-        call_ctx.r5 = PLAYER0_MGR;
-        call_ctx.r6 = 0xD;
-        func_8007A6C4(rdram, &call_ctx);
-
-        if (newly_created) {
-            call_ctx.r4 = save_block;
-            func_8007C5CC(rdram, &call_ctx);
-        }
-    }
+(void)ctx;
 }
 
 extern "C" void tnt_apply_seed_override(uint8_t* rdram, recomp_context* ctx) {
