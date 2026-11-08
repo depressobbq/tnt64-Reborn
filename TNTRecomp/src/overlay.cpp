@@ -21,6 +21,10 @@ extern std::atomic<float> tnt_game_fps;
 std::atomic<bool> tnt_timer_enabled{ false };
 #endif
 constexpr uint32_t tnt_overlay_dl_addr = 0x7F0000;
+constexpr uint32_t MENU_BG_RDRAM_ADDR = 0x700000;
+#if !defined(__vita__)
+extern const uint16_t g_menu_bg_rgba16[76800];
+#endif
 
 // ---- Frame / FPS overlay ----------------------------------------------------
 // Drawn as an extra RDP display list after each game frame, into the same colour image,
@@ -334,164 +338,217 @@ namespace {
     void draw_tournament_options(DlWriter& w, uint32_t cimg0, int width, int height) {
         auto state = tnt::tournament::get_menu_render_state();
         const int s = width >= 640 ? 2 : 1;
-        const int cw = 6 * s, lh = 12 * s;
-        const int cols = 38;
 
-        struct Line { std::string text; int color; }; // 0 white, 1 gold, 2 gray, 3 cyan, 4 green, 5 red
-        std::vector<Line> lines;
+        // DMA menu background image (320x240 RGBA5551) to high RDRAM once
+        static bool s_bg_dma_done = false;
+        if (!s_bg_dma_done) {
+            std::memcpy(w.rdram + MENU_BG_RDRAM_ADDR, g_menu_bg_rgba16, sizeof(g_menu_bg_rgba16));
+            s_bg_dma_done = true;
+        }
 
-        lines.push_back({ "* REBORN MASTER SETTINGS *", 1 });
+        const int x_off = std::max(0, (width - 320 * s) / 2);
+        const int y_off = std::max(0, (height - 240 * s) / 2);
 
-        // Tab Bar header with active tab bracketed
+        // 1. Clear letterbox borders to pure black if non-4:3 aspect ratio
+        if (x_off > 0) {
+            set_color(w, cimg0, 0, 0, 0);
+            rect(w, 0, 0, x_off - 1, height - 1);
+            rect(w, width - x_off, 0, width - 1, height - 1);
+        }
+        if (y_off > 0) {
+            set_color(w, cimg0, 0, 0, 0);
+            rect(w, 0, 0, width - 1, y_off - 1);
+            rect(w, 0, height - y_off, width - 1, height - 1);
+        }
+
+        // 2. Render authentic stone wall + wooden MENU frame background via textured slices
+        w.cmd(0xE7000000u, 0);                 // G_RDPPIPESYNC
+        w.cmd(0xE3000A01u, 0x00000000u);       // G_SETOTHERMODE_H: cycle type 1CYCLE
+        w.cmd(0xE200001Cu, 0x0C084040u);       // G_SETOTHERMODE_L: G_RM_OPA_SURF
+        w.cmd(0xFC127E24u, 0xFFFFFDF8u);       // G_SETCOMBINE: G_CC_DECALRGBA
+
+        for (int i = 0; i < 40; i++) {
+            uint32_t slice_addr = MENU_BG_RDRAM_ADDR + uint32_t(i * 320 * 6 * 2);
+            w.cmd(0xFD100000u | 319u, slice_addr);                     // G_SETTIMG: RGBA16, 320px
+            w.cmd(0xF5100000u, 0x07000000u);                           // G_SETTILE: tile 7
+            w.cmd(0xF3000000u, 0x07000000u | (1919u << 12) | 0x0004u); // G_LOADBLOCK: 1920 texels
+            w.cmd(0xF5100000u | (80u << 9), 0x00000000u);              // G_SETTILE: tile 0, line 80
+            w.cmd(0xF2000000u, (319u << 14) | (5u << 2));              // G_SETTILESIZE: 320x6
+
+            int y0_px = y_off + i * 6 * s;
+            int y1_px = y_off + (i + 1) * 6 * s;
+            int x0_px = x_off;
+            int x1_px = x_off + 320 * s;
+
+            uint32_t ulx_fp = uint32_t(x0_px) << 2;
+            uint32_t uly_fp = uint32_t(y0_px) << 2;
+            uint32_t lrx_fp = uint32_t(x1_px) << 2;
+            uint32_t lry_fp = uint32_t(y1_px) << 2;
+
+            w.cmd(0xE4000000u | (lrx_fp << 12) | lry_fp, (0u << 24) | (ulx_fp << 12) | uly_fp); // G_TEXRECT
+            w.cmd(0u, 0u);                                             // uls = 0, ult = 0
+            uint32_t step = 0x0400u / uint32_t(s);
+            w.cmd(0u, (step << 16) | step);                            // dsdx, dtdy
+        }
+
+        // 3. Switch back to FILL mode for text, tabs, and selection capsules
+        w.cmd(0xE7000000u, 0);                 // G_RDPPIPESYNC
+        w.cmd(0xE3000A01u, 0x00300000u);       // cycle type: FILL
+        w.cmd(0xE200001Cu, 0);                 // render mode: none
+
+        // 4. Tab Bar below silver MENU title (y = 43)
         char tab_buf[64];
         const char* t0 = (state.active_tab == 0) ? "<RULES>" : " RULES ";
         const char* t1 = (state.active_tab == 1) ? "<ENHANCE>" : " ENHANCE ";
         const char* t2 = (state.active_tab == 2) ? "<GFX>" : " GFX ";
         const char* t3 = (state.active_tab == 3) ? "<DISCORD>" : " DISCORD ";
         snprintf(tab_buf, sizeof(tab_buf), "[L] %s %s %s %s [R]", t0, t1, t2, t3);
-        lines.push_back({ tab_buf, 3 });
-        lines.push_back({ "", 0 });
 
+        set_color(w, cimg0, 110, 225, 255); // Cyan
+        text(w, x_off + 34 * s, y_off + 43 * s, s, tab_buf);
+
+        // Accent divider line under tab bar
+        set_color(w, cimg0, 100, 120, 160);
+        rect(w, x_off + 30 * s, y_off + 55 * s, x_off + 290 * s, y_off + 55 * s + s - 1);
+
+        // 5. Build option rows for active tab
+        struct Row { std::string text; int color; }; // 0 white, 1 gold, 2 gray, 3 cyan, 4 green, 5 red
+        std::vector<Row> rows;
         char buf[64];
 
         if (state.active_tab == 0) { // RULES
             const char* ruleset_names[6] = { "AUTHENTIC TNT", "MODERN 7-BAG", "NES 1989", "TGM HISTORY", "PURE RANDOM", "BLOCK TRAINING" };
-            snprintf(buf, sizeof(buf), "%s PIECE RULESET: <%s>", state.selected_row == 0 ? ">" : " ", ruleset_names[std::clamp(state.piece_ruleset, 0, 5)]);
-            lines.push_back({ buf, state.selected_row == 0 ? 1 : 3 });
+            snprintf(buf, sizeof(buf), "PIECE RULESET: <%s>", ruleset_names[std::clamp(state.piece_ruleset, 0, 5)]);
+            rows.push_back({ buf, 3 });
 
-            snprintf(buf, sizeof(buf), "%s SEED RUN:      <%s>", state.selected_row == 1 ? ">" : " ", state.seeded_run ? "FIXED SEED" : "RANDOM");
-            lines.push_back({ buf, state.selected_row == 1 ? 1 : (state.seeded_run ? 4 : 2) });
+            snprintf(buf, sizeof(buf), "SEED RUN:      <%s>", state.seeded_run ? "FIXED SEED" : "RANDOM");
+            rows.push_back({ buf, state.seeded_run ? 4 : 2 });
 
-            snprintf(buf, sizeof(buf), "%s MATCH SEED:    <0x%08X>", state.selected_row == 2 ? ">" : " ", state.current_seed);
-            lines.push_back({ buf, state.selected_row == 2 ? 1 : 3 });
+            snprintf(buf, sizeof(buf), "MATCH SEED:    <0x%08X>", state.current_seed);
+            rows.push_back({ buf, 3 });
 
-            snprintf(buf, sizeof(buf), "%s RANDOMIZE SEED", state.selected_row == 3 ? ">" : " ");
-            lines.push_back({ buf, state.selected_row == 3 ? 1 : 0 });
+            rows.push_back({ "RANDOMIZE SEED", 0 });
 
             const char* mode_str = (state.tournament_mode == 0) ? "MARATHON" :
                                   (state.tournament_mode == 1 ? "SPRINT (3 MIN)" : "ULTRA (150L)");
-            snprintf(buf, sizeof(buf), "%s GAME TYPE:     <%s>", state.selected_row == 4 ? ">" : " ", mode_str);
-            lines.push_back({ buf, state.selected_row == 4 ? 1 : 0 });
+            snprintf(buf, sizeof(buf), "GAME TYPE:     <%s>", mode_str);
+            rows.push_back({ buf, 0 });
 
             const char* plyr_str = (state.players == 1) ? "1 PLAYER" : "2 PLAYERS";
-            snprintf(buf, sizeof(buf), "%s MATCH MODE:    <%s>", state.selected_row == 5 ? ">" : " ", plyr_str);
-            lines.push_back({ buf, state.selected_row == 5 ? 1 : 0 });
+            snprintf(buf, sizeof(buf), "MATCH MODE:    <%s>", plyr_str);
+            rows.push_back({ buf, 0 });
 
-            snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 6 ? ">" : " ");
-            lines.push_back({ buf, state.selected_row == 6 ? 1 : 4 });
+            rows.push_back({ "SAVE & RETURN", 4 });
         } else if (state.active_tab == 1) { // ENHANCEMENTS
-            snprintf(buf, sizeof(buf), "%s SIDEBAR HUD:   <%s>", state.selected_row == 0 ? ">" : " ", state.hud_enabled ? "ON" : "OFF");
-            lines.push_back({ buf, state.selected_row == 0 ? 1 : (state.hud_enabled ? 4 : 2) });
+            snprintf(buf, sizeof(buf), "SIDEBAR HUD:   <%s>", state.hud_enabled ? "ON" : "OFF");
+            rows.push_back({ buf, state.hud_enabled ? 4 : 2 });
 
-            snprintf(buf, sizeof(buf), "%s MATCH TIMER:   <%s>", state.selected_row == 1 ? ">" : " ", state.timer_enabled ? "ON" : "OFF");
-            lines.push_back({ buf, state.selected_row == 1 ? 1 : (state.timer_enabled ? 4 : 2) });
+            snprintf(buf, sizeof(buf), "MATCH TIMER:   <%s>", state.timer_enabled ? "ON" : "OFF");
+            rows.push_back({ buf, state.timer_enabled ? 4 : 2 });
 
-            snprintf(buf, sizeof(buf), "%s POST-GAME PANEL:<%s>", state.selected_row == 2 ? ">" : " ", state.panel_enabled ? "ON" : "OFF");
-            lines.push_back({ buf, state.selected_row == 2 ? 1 : (state.panel_enabled ? 4 : 2) });
+            snprintf(buf, sizeof(buf), "POST-GAME PANEL:<%s>", state.panel_enabled ? "ON" : "OFF");
+            rows.push_back({ buf, state.panel_enabled ? 4 : 2 });
 
-            snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 3 ? ">" : " ");
-            lines.push_back({ buf, state.selected_row == 3 ? 1 : 4 });
-
-            snprintf(buf, sizeof(buf), "%s EXIT GAME", state.selected_row == 4 ? ">" : " ");
-            lines.push_back({ buf, state.selected_row == 4 ? 1 : 5 });
+            rows.push_back({ "SAVE & RETURN", 4 });
+            rows.push_back({ "EXIT GAME", 5 });
         } else if (state.active_tab == 2) { // GRAPHICS
             const char* msaa_str[4] = { "OFF", "2X", "4X", "8X" };
-            snprintf(buf, sizeof(buf), "%s ANTIALIASING:  <%s>", state.selected_row == 0 ? ">" : " ", msaa_str[std::clamp(state.antialiasing, 0, 3)]);
-            lines.push_back({ buf, state.selected_row == 0 ? 1 : 3 });
+            snprintf(buf, sizeof(buf), "ANTIALIASING:  <%s>", msaa_str[std::clamp(state.antialiasing, 0, 3)]);
+            rows.push_back({ buf, 3 });
 
             const char* filter_str[3] = { "PIXEL SCALING", "LINEAR", "NEAREST" };
-            snprintf(buf, sizeof(buf), "%s TEXTURE FILTER:<%s>", state.selected_row == 1 ? ">" : " ", filter_str[std::clamp(state.filtering, 0, 2)]);
-            lines.push_back({ buf, state.selected_row == 1 ? 1 : 0 });
+            snprintf(buf, sizeof(buf), "TEXTURE FILTER:<%s>", filter_str[std::clamp(state.filtering, 0, 2)]);
+            rows.push_back({ buf, 0 });
 
             const char* upscale_str[3] = { "SCALED ONLY", "ALL", "ORIGINAL" };
-            snprintf(buf, sizeof(buf), "%s 2D UI UPSCALE: <%s>", state.selected_row == 2 ? ">" : " ", upscale_str[std::clamp(state.upscale_2d, 0, 2)]);
-            lines.push_back({ buf, state.selected_row == 2 ? 1 : 0 });
+            snprintf(buf, sizeof(buf), "2D UI UPSCALE: <%s>", upscale_str[std::clamp(state.upscale_2d, 0, 2)]);
+            rows.push_back({ buf, 0 });
 
-            snprintf(buf, sizeof(buf), "%s FPS OVERLAY:   <%s>", state.selected_row == 3 ? ">" : " ", state.show_fps ? "ON" : "OFF");
-            lines.push_back({ buf, state.selected_row == 3 ? 1 : (state.show_fps ? 4 : 2) });
+            snprintf(buf, sizeof(buf), "FPS OVERLAY:   <%s>", state.show_fps ? "ON" : "OFF");
+            rows.push_back({ buf, state.show_fps ? 4 : 2 });
 
-            snprintf(buf, sizeof(buf), "%s DISPLAY MODE:  <%s>", state.selected_row == 4 ? ">" : " ", state.fullscreen ? "FULLSCREEN" : "WINDOWED");
-            lines.push_back({ buf, state.selected_row == 4 ? 1 : 0 });
+            snprintf(buf, sizeof(buf), "DISPLAY MODE:  <%s>", state.fullscreen ? "FULLSCREEN" : "WINDOWED");
+            rows.push_back({ buf, 0 });
 
-            snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 5 ? ">" : " ");
-            lines.push_back({ buf, state.selected_row == 5 ? 1 : 4 });
+            rows.push_back({ "SAVE & RETURN", 4 });
         } else if (state.active_tab == 3) { // DISCORD
-            snprintf(buf, sizeof(buf), "%s DISCORD WEBHOOK:<%s>", state.selected_row == 0 ? ">" : " ", state.discord_enabled ? "ON" : "OFF");
-            lines.push_back({ buf, state.selected_row == 0 ? 1 : (state.discord_enabled ? 4 : 2) });
+            snprintf(buf, sizeof(buf), "DISCORD WEBHOOK:<%s>", state.discord_enabled ? "ON" : "OFF");
+            rows.push_back({ buf, state.discord_enabled ? 4 : 2 });
 
-            snprintf(buf, sizeof(buf), "%s PLAYER NAME:    <%s>", state.selected_row == 1 ? ">" : " ", state.player_name);
-            lines.push_back({ buf, state.selected_row == 1 ? 1 : 3 });
+            snprintf(buf, sizeof(buf), "PLAYER NAME:    <%s>", state.player_name);
+            rows.push_back({ buf, 3 });
 
-            snprintf(buf, sizeof(buf), "%s WEBHOOK URL:    <%s>", state.selected_row == 2 ? ">" : " ", state.webhook_set ? "CONFIGURED" : "NOT SET IN INI");
-            lines.push_back({ buf, state.selected_row == 2 ? 1 : (state.webhook_set ? 4 : 2) });
+            snprintf(buf, sizeof(buf), "WEBHOOK URL:    <%s>", state.webhook_set ? "CONFIGURED" : "NOT SET IN INI");
+            rows.push_back({ buf, state.webhook_set ? 4 : 2 });
 
             const char* test_label = state.test_post_sent ? "< POST SENT! >" : (state.webhook_set ? "[A] SEND TEST POST" : "[SET IN INI]");
-            snprintf(buf, sizeof(buf), "%s TEST WEBHOOK:   %s", state.selected_row == 3 ? ">" : " ", test_label);
-            lines.push_back({ buf, state.selected_row == 3 ? 1 : (state.test_post_sent ? 4 : 0) });
+            snprintf(buf, sizeof(buf), "TEST WEBHOOK:   %s", test_label);
+            rows.push_back({ buf, state.test_post_sent ? 4 : 0 });
 
-            snprintf(buf, sizeof(buf), "%s SAVE & RETURN", state.selected_row == 4 ? ">" : " ");
-            lines.push_back({ buf, state.selected_row == 4 ? 1 : 4 });
+            rows.push_back({ "SAVE & RETURN", 4 });
         }
 
-        lines.push_back({ "", 0 });
-        lines.push_back({ " [L/R] SWITCH TAB   [D-PAD] ADJUST", 2 });
-        lines.push_back({ " [A] SELECT/TOGGLE  [B] SAVE & RETURN", 2 });
+        // 6. Draw options inside wooden frame
+        const int row_base_y = y_off + 63 * s;
+        const int row_h = 18 * s;
 
-        int menu_cols = cols;
-        for (const auto& l : lines) {
-            if ((int)l.text.size() + 2 > menu_cols) menu_cols = (int)l.text.size() + 2;
+        // Render rounded selection capsule around active row
+        if (state.selected_row >= 0 && state.selected_row < int(rows.size())) {
+            int sel_y0 = row_base_y + state.selected_row * row_h - 2 * s;
+            int sel_y1 = sel_y0 + 15 * s;
+            int sel_x0 = x_off + 30 * s;
+            int sel_x1 = x_off + 290 * s;
+
+            // Translucent dark blue backing
+            set_color(w, cimg0, 22, 38, 72);
+            rect(w, sel_x0 + 2 * s, sel_y0 + s, sel_x1 - 2 * s, sel_y1 - s);
+
+            // Beveled Gold capsule outer border
+            set_color(w, cimg0, 255, 215, 60);
+            rect(w, sel_x0 + 2 * s, sel_y0, sel_x1 - 2 * s, sel_y0 + s - 1);       // top
+            rect(w, sel_x0 + 2 * s, sel_y1 - s + 1, sel_x1 - 2 * s, sel_y1);       // bottom
+            rect(w, sel_x0, sel_y0 + 2 * s, sel_x0 + s - 1, sel_y1 - 2 * s);       // left cap
+            rect(w, sel_x1 - s + 1, sel_y0 + 2 * s, sel_x1, sel_y1 - 2 * s);       // right cap
+
+            // Rounded corner pixels
+            rect(w, sel_x0 + s, sel_y0 + s, sel_x0 + s, sel_y0 + s);
+            rect(w, sel_x1 - s, sel_y0 + s, sel_x1 - s, sel_y0 + s);
+            rect(w, sel_x0 + s, sel_y1 - s, sel_x0 + s, sel_y1 - s);
+            rect(w, sel_x1 - s, sel_y1 - s, sel_x1 - s, sel_y1 - s);
+
+            // Up / down indicator arrows on right edge (authentic option set dial)
+            int arr_x = sel_x1 - 10 * s;
+            int arr_y_up = sel_y0 + 3 * s;
+            rect(w, arr_x, arr_y_up + s, arr_x + 2 * s - 1, arr_y_up + s);
+            rect(w, arr_x + s - 1, arr_y_up, arr_x + s, arr_y_up);
+
+            int arr_y_dn = sel_y1 - 4 * s;
+            rect(w, arr_x, arr_y_dn, arr_x + 2 * s - 1, arr_y_dn);
+            rect(w, arr_x + s - 1, arr_y_dn + s, arr_x + s, arr_y_dn + s);
         }
-
-        int pw = menu_cols * cw + 24 * s, ph = int(lines.size()) * lh + 20 * s;
-        int x0 = (width - pw) / 2, y0 = (height - ph) / 2;
-        if (x0 < 0 || y0 < 0) return;
-
-        // Draw authentic ornate beveled panel
-        draw_beveled_box(w, cimg0, x0, y0, x0 + pw - 1, y0 + ph - 1, s);
-
-        // Decorative mini-cubes on header
-        draw_mini_cube(w, cimg0, x0 + 10 * s, y0 + 7 * s, s, true);
-        draw_mini_cube(w, cimg0, x0 + pw - 18 * s, y0 + 7 * s, s, false);
-
-        // Accent line under title
-        set_color(w, cimg0, 190, 150, 45);
-        rect(w, x0 + 8 * s, y0 + 19 * s, x0 + pw - 9 * s, y0 + 19 * s + s - 1);
-
-        // Accent line under tab bar
-        set_color(w, cimg0, 120, 140, 180);
-        rect(w, x0 + 8 * s, y0 + 31 * s, x0 + pw - 9 * s, y0 + 31 * s + s - 1);
-
-        // Glowing selection pill highlight (line 3 is row 0)
-        int sel_line = 3 + state.selected_row;
-        int hl_y0 = y0 + 10 * s + sel_line * lh - 1 * s;
-        int hl_y1 = hl_y0 + lh - 1 * s;
-
-        // Pill background
-        set_color(w, cimg0, 30, 50, 95);
-        rect(w, x0 + 6 * s, hl_y0, x0 + pw - 7 * s, hl_y1);
-        // Pill top/bottom glow border
-        set_color(w, cimg0, 80, 160, 240);
-        rect(w, x0 + 6 * s, hl_y0, x0 + pw - 7 * s, hl_y0 + s - 1);
-        rect(w, x0 + 6 * s, hl_y1 - s + 1, x0 + pw - 7 * s, hl_y1);
 
         const uint8_t colors[6][3] = {
             { 240, 240, 248 }, // 0: white
-            { 255, 215, 60 },  // 1: gold
+            { 255, 220, 65 },  // 1: gold
             { 145, 155, 185 }, // 2: gray
             { 110, 225, 255 }, // 3: cyan
             { 90, 235, 120 },  // 4: green
             { 255, 115, 95 }   // 5: coral/red for EXIT GAME
         };
 
-        int last_color = -1;
-        for (size_t i = 0; i < lines.size(); i++) {
-            if (lines[i].text.empty()) continue;
-            int c = lines[i].color;
-            if (c != last_color) {
-                set_color(w, cimg0, colors[c][0], colors[c][1], colors[c][2]);
-                last_color = c;
+        for (size_t i = 0; i < rows.size(); i++) {
+            if (rows[i].text.empty()) continue;
+            bool is_selected = (int(i) == state.selected_row);
+            int c = is_selected ? 1 : rows[i].color;
+            set_color(w, cimg0, colors[c][0], colors[c][1], colors[c][2]);
+
+            // Draw cursor prefix
+            int text_x = x_off + 36 * s;
+            int text_y = row_base_y + int(i) * row_h;
+            if (is_selected) {
+                text(w, text_x, text_y, s, ">");
             }
-            text(w, x0 + 10 * s, y0 + 10 * s + int(i) * lh, s, lines[i].text);
+            text(w, text_x + 8 * s, text_y, s, rows[i].text);
         }
     }
 #endif
