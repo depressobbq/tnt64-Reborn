@@ -385,7 +385,7 @@ namespace {
             w.cmd(0xE6000000u, 0);                                     // G_RDPLOADSYNC
             w.cmd(0xFD100000u | 319u, slice_addr);                     // G_SETTIMG: RGBA16, 320px
             w.cmd(0xF5100000u, 0x07000000u);                           // G_SETTILE: tile 7
-            w.cmd(0xF3000000u, 0x07000000u | (1919u << 12) | 0x0004u); // G_LOADBLOCK: 1920 texels
+            w.cmd(0xF3000000u, 0x07000000u | (1919u << 12) | 0x001Au); // G_LOADBLOCK: 1920 texels, DXT=26
             w.cmd(0xF5100000u | (80u << 9), 0x00000000u);              // G_SETTILE: tile 0, line 80
             w.cmd(0xF2000000u, (319u << 14) | (5u << 2));              // G_SETTILESIZE: 320x6
 
@@ -531,7 +531,7 @@ namespace {
                 w.cmd(0xE6000000u, 0);                                     // G_RDPLOADSYNC
                 w.cmd(0xFD100000u | 255u, cap_slice_addr);                 // G_SETTIMG: RGBA16, 256px
                 w.cmd(0xF5100000u, 0x07000000u);                           // G_SETTILE: tile 7
-                w.cmd(0xF3000000u, 0x07000000u | (2047u << 12) | 0x0004u); // G_LOADBLOCK: 2048 texels
+                w.cmd(0xF3000000u, 0x07000000u | (2047u << 12) | 0x0020u); // G_LOADBLOCK: 2048 texels, DXT=32
                 w.cmd(0xF5100000u | (64u << 9), 0x00000000u);              // G_SETTILE: tile 0, line 64
                 w.cmd(0xF2000000u, (255u << 14) | (7u << 2));              // G_SETTILESIZE: 256x8
 
