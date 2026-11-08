@@ -339,10 +339,13 @@ namespace {
         auto state = tnt::tournament::get_menu_render_state();
         const int s = width >= 640 ? 2 : 1;
 
-        // DMA menu background image (320x240 RGBA5551) to high RDRAM once
+        // DMA menu background image (320x240 RGBA5551) to high RDRAM once (with N64 big-endian byte-swapping)
         static bool s_bg_dma_done = false;
         if (!s_bg_dma_done) {
-            std::memcpy(w.rdram + MENU_BG_RDRAM_ADDR, g_menu_bg_rgba16, sizeof(g_menu_bg_rgba16));
+            const uint8_t* src = reinterpret_cast<const uint8_t*>(g_menu_bg_rgba16);
+            for (size_t p = 0; p < sizeof(g_menu_bg_rgba16); p++) {
+                (w.rdram + MENU_BG_RDRAM_ADDR)[p ^ 3] = src[p];
+            }
             s_bg_dma_done = true;
         }
 
@@ -363,12 +366,14 @@ namespace {
 
         // 2. Render authentic stone wall + wooden MENU frame background via textured slices
         w.cmd(0xE7000000u, 0);                 // G_RDPPIPESYNC
+        w.cmd(0xD7000002u, 0x80008000u);       // G_TEXTURE: tile 0, on=1, scale 1.0
         w.cmd(0xE3000A01u, 0x00000000u);       // G_SETOTHERMODE_H: cycle type 1CYCLE
         w.cmd(0xE200001Cu, 0x0C084040u);       // G_SETOTHERMODE_L: G_RM_OPA_SURF
-        w.cmd(0xFC127E24u, 0xFFFFFDF8u);       // G_SETCOMBINE: G_CC_DECALRGBA
+        w.cmd(0xFC119623u, 0xFF2FFFFFu);       // G_SETCOMBINE: Texel0 decal RGBA
 
         for (int i = 0; i < 40; i++) {
             uint32_t slice_addr = MENU_BG_RDRAM_ADDR + uint32_t(i * 320 * 6 * 2);
+            w.cmd(0xE6000000u, 0);                                     // G_RDPLOADSYNC
             w.cmd(0xFD100000u | 319u, slice_addr);                     // G_SETTIMG: RGBA16, 320px
             w.cmd(0xF5100000u, 0x07000000u);                           // G_SETTILE: tile 7
             w.cmd(0xF3000000u, 0x07000000u | (1919u << 12) | 0x0004u); // G_LOADBLOCK: 1920 texels
@@ -386,13 +391,14 @@ namespace {
             uint32_t lry_fp = uint32_t(y1_px) << 2;
 
             w.cmd(0xE4000000u | (lrx_fp << 12) | lry_fp, (0u << 24) | (ulx_fp << 12) | uly_fp); // G_TEXRECT
-            w.cmd(0u, 0u);                                             // uls = 0, ult = 0
+            w.cmd(0xE1000000u, 0u);                                    // G_RDPHALF_1: uls = 0, ult = 0
             uint32_t step = 0x0400u / uint32_t(s);
-            w.cmd(0u, (step << 16) | step);                            // dsdx, dtdy
+            w.cmd(0xF1000000u, (step << 16) | step);                   // G_RDPHALF_2: dsdx, dtdy
         }
 
         // 3. Switch back to FILL mode for text, tabs, and selection capsules
         w.cmd(0xE7000000u, 0);                 // G_RDPPIPESYNC
+        w.cmd(0xD7000000u, 0);                 // G_TEXTURE: off
         w.cmd(0xE3000A01u, 0x00300000u);       // cycle type: FILL
         w.cmd(0xE200001Cu, 0);                 // render mode: none
 
