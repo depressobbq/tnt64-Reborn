@@ -134,6 +134,14 @@ namespace {
 }
 
 namespace tnt::tournament {
+    struct TabTransition {
+        int prev_tab = -1;
+        float progress = 1.0f;
+        float direction = 0.0f;
+    };
+    TabTransition s_tab_transition;
+    float s_menu_enter_progress = 0.0f;
+
     uint32_t read_live_seed(uint8_t* rdram) {
         if (!rdram) return g_match_initial_seed.load();
         return rd32(rdram, SEED_ADDR);
@@ -147,6 +155,24 @@ namespace tnt::tournament {
         MenuRenderState s;
         s.active_tab = g_menu_state.active_tab;
         s.selected_row = g_menu_state.selected_row;
+
+        // Entrance animation ease-out
+        float enter_t = s_menu_enter_progress;
+        float enter_ease = 1.0f - (1.0f - enter_t) * (1.0f - enter_t) * (1.0f - enter_t);
+        s.enter_offset_x = (1.0f - enter_ease) * 320.0f;
+
+        // Tab slide animation ease-out
+        float tab_t = s_tab_transition.progress;
+        float tab_ease = 1.0f - (1.0f - tab_t) * (1.0f - tab_t);
+        s.prev_tab = s_tab_transition.prev_tab;
+        if (s.prev_tab >= 0 && tab_t < 1.0f) {
+            s.slide_offset_x = (1.0f - tab_ease) * (-s_tab_transition.direction * 260.0f);
+            s.prev_tab_offset_x = -tab_ease * (-s_tab_transition.direction * 260.0f);
+        } else {
+            s.slide_offset_x = 0.0f;
+            s.prev_tab_offset_x = 0.0f;
+            s.prev_tab = -1;
+        }
         s.piece_ruleset = g_menu_state.piece_ruleset;
         s.block_training = g_menu_state.block_training;
         s.tournament_mode = g_menu_state.tournament_mode;
@@ -767,6 +793,20 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
         g_menu_state.test_post_sent = false;
 
         g_menu_state.initialized = true;
+        tnt::tournament::s_menu_enter_progress = 0.0f;
+        tnt::tournament::s_tab_transition = { -1, 1.0f, 0.0f };
+    }
+
+    if (tnt::tournament::s_menu_enter_progress < 1.0f) {
+        tnt::tournament::s_menu_enter_progress += 0.08f;
+        if (tnt::tournament::s_menu_enter_progress > 1.0f) tnt::tournament::s_menu_enter_progress = 1.0f;
+    }
+    if (tnt::tournament::s_tab_transition.progress < 1.0f) {
+        tnt::tournament::s_tab_transition.progress += 0.125f;
+        if (tnt::tournament::s_tab_transition.progress >= 1.0f) {
+            tnt::tournament::s_tab_transition.progress = 1.0f;
+            tnt::tournament::s_tab_transition.prev_tab = -1;
+        }
     }
 
     // Read controller 0 input from N64 controller buffer
@@ -791,14 +831,20 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
     uint16_t pressed = buttons & ~s_last_buttons;
     s_last_buttons = buttons;
 
-    // L / R Bumpers switch active tabs
-    if (pressed & 0x0020) { // L Bumper
+    // L / R Bumpers switch active tabs with smooth slide shift animation
+    if (pressed & 0x0020) { // L Bumper (shift right)
+        tnt::tournament::s_tab_transition.prev_tab = g_menu_state.active_tab;
         g_menu_state.active_tab = (g_menu_state.active_tab + 3) % 4;
         g_menu_state.selected_row = 0;
+        tnt::tournament::s_tab_transition.progress = 0.0f;
+        tnt::tournament::s_tab_transition.direction = 1.0f;
     }
-    if (pressed & 0x0010) { // R Bumper
+    if (pressed & 0x0010) { // R Bumper (shift left)
+        tnt::tournament::s_tab_transition.prev_tab = g_menu_state.active_tab;
         g_menu_state.active_tab = (g_menu_state.active_tab + 1) % 4;
         g_menu_state.selected_row = 0;
+        tnt::tournament::s_tab_transition.progress = 0.0f;
+        tnt::tournament::s_tab_transition.direction = -1.0f;
     }
 
     // Number of rows per tab:

@@ -12,7 +12,7 @@ endif()
 add_subdirectory(${TNT_RT64_DIR} ${CMAKE_BINARY_DIR}/rt64)
 target_include_directories(rt64 PRIVATE ${CMAKE_BINARY_DIR}/rt64/src)
 
-target_sources(TNTRecompiled PRIVATE src/sdl_backend.cpp src/sdl_audio.cpp src/rt64_render_context.cpp src/overlay.cpp src/menu_bg_data.cpp)
+target_sources(TNTRecompiled PRIVATE src/sdl_backend.cpp src/sdl_audio.cpp src/rt64_render_context.cpp src/overlay.cpp src/menu_bg_data.cpp src/menu_capsule_data.cpp)
 target_include_directories(TNTRecompiled PRIVATE
     ${TNT_RT64_DIR}/src
     ${TNT_RT64_DIR}/src/contrib

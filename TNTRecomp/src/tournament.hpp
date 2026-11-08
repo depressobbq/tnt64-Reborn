@@ -42,6 +42,12 @@ namespace tnt::tournament {
         int active_tab = 0; // 0: RULES, 1: ENHANCEMENTS, 2: GRAPHICS, 3: DISCORD
         int selected_row = 0;
 
+        // Transition animations
+        float slide_offset_x = 0.0f;      // Horizontal offset for active tab during tab shift
+        int prev_tab = -1;                // Previous tab index during transition
+        float prev_tab_offset_x = 0.0f;   // Horizontal offset for outgoing tab during tab shift
+        float enter_offset_x = 0.0f;      // Horizontal entrance slide offset
+
         // Tab 0: Rules
         int piece_ruleset = 0; // 0: TNT ORIG, 1: MODERN 7-BAG, 2: NES 1989, 3: TGM, 4: PURE RANDOM, 5: BLOCK TRAINING
         bool block_training = false;
