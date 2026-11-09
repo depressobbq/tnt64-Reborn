@@ -9,7 +9,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cmath>
 #include <condition_variable>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -158,6 +160,68 @@ namespace {
         return pool[dist(gen)];
     }
 
+    // High-quality cubic Hermite resampler converting any sample rate and channel layout to 48000 Hz stereo.
+    // Avoids buggy SDL2 float resamplers on Windows/Wine that cause periodic 10^32 corruption spikes.
+    void resample_to_48k_stereo(const float* in, size_t in_frames, unsigned int channels, unsigned int in_rate, std::vector<float>& out_samples_48k) {
+        if (!in || in_frames == 0 || channels == 0) {
+            out_samples_48k.clear();
+            return;
+        }
+
+        constexpr uint32_t target_rate = 48000;
+        if (in_rate == target_rate) {
+            out_samples_48k.resize(in_frames * 2);
+            if (channels == 1) {
+                for (size_t i = 0; i < in_frames; ++i) {
+                    float s = in[i];
+                    out_samples_48k[i * 2 + 0] = s;
+                    out_samples_48k[i * 2 + 1] = s;
+                }
+            } else {
+                for (size_t i = 0; i < in_frames; ++i) {
+                    out_samples_48k[i * 2 + 0] = in[i * channels + 0];
+                    out_samples_48k[i * 2 + 1] = in[i * channels + 1];
+                }
+            }
+            return;
+        }
+
+        // Resample with Catmull-Rom cubic Hermite spline interpolation
+        double ratio = static_cast<double>(in_rate) / static_cast<double>(target_rate);
+        size_t n_out = static_cast<size_t>(std::ceil(static_cast<double>(in_frames) / ratio));
+        out_samples_48k.resize(n_out * 2);
+
+        for (size_t i = 0; i < n_out; ++i) {
+            double in_pos = i * ratio;
+            int64_t idx = static_cast<int64_t>(std::floor(in_pos));
+            float frac = static_cast<float>(in_pos - idx);
+
+            int64_t i0 = (idx > 0) ? (idx - 1) : 0;
+            int64_t i1 = (idx < static_cast<int64_t>(in_frames)) ? idx : (static_cast<int64_t>(in_frames) - 1);
+            int64_t i2 = ((idx + 1) < static_cast<int64_t>(in_frames)) ? (idx + 1) : (static_cast<int64_t>(in_frames) - 1);
+            int64_t i3 = ((idx + 2) < static_cast<int64_t>(in_frames)) ? (idx + 2) : (static_cast<int64_t>(in_frames) - 1);
+
+            for (int ch = 0; ch < 2; ++ch) {
+                int src_ch = (channels == 1) ? 0 : ch;
+                float p0 = in[i0 * channels + src_ch];
+                float p1 = in[i1 * channels + src_ch];
+                float p2 = in[i2 * channels + src_ch];
+                float p3 = in[i3 * channels + src_ch];
+
+                float a = -0.5f * p0 + 1.5f * p1 - 1.5f * p2 + 0.5f * p3;
+                float b = p0 - 2.5f * p1 + 2.0f * p2 - 0.5f * p3;
+                float c = -0.5f * p0 + 0.5f * p2;
+                float d = p1;
+
+                float sample = ((a * frac + b) * frac + c) * frac + d;
+                if (sample > 1.0f) sample = 1.0f;
+                else if (sample < -1.0f) sample = -1.0f;
+
+                out_samples_48k[i * 2 + ch] = sample;
+            }
+        }
+    }
+
     bool decode_audio_file(const std::string& filepath, std::vector<float>& out_samples_48k) {
         out_samples_48k.clear();
         std::string ext = to_lower(fs::path(filepath).extension().string());
@@ -172,40 +236,7 @@ namespace {
                 return false;
             }
 
-            if (cfg.sampleRate == 48000 && cfg.channels == 2) {
-                out_samples_48k.assign(pSampleData, pSampleData + (total_frames * 2));
-            } else {
-                SDL_AudioCVT cvt;
-                int ret = SDL_BuildAudioCVT(&cvt,
-                    AUDIO_F32SYS, static_cast<Uint8>(cfg.channels), static_cast<int>(cfg.sampleRate),
-                    AUDIO_F32SYS, 2, 48000);
-                if (ret < 0) {
-                    printf("[custom audio] SDL_BuildAudioCVT failed: %s\n", SDL_GetError());
-                    drmp3_free(pSampleData, nullptr);
-                    return false;
-                }
-
-                cvt.len = static_cast<int>(total_frames * cfg.channels * sizeof(float));
-                cvt.buf = static_cast<Uint8*>(malloc(cvt.len * cvt.len_mult));
-                if (!cvt.buf) {
-                    drmp3_free(pSampleData, nullptr);
-                    return false;
-                }
-                memcpy(cvt.buf, pSampleData, cvt.len);
-
-                if (SDL_ConvertAudio(&cvt) < 0) {
-                    printf("[custom audio] SDL_ConvertAudio failed: %s\n", SDL_GetError());
-                    free(cvt.buf);
-                    drmp3_free(pSampleData, nullptr);
-                    return false;
-                }
-
-                size_t out_floats = cvt.len_cvt / sizeof(float);
-                float* converted = reinterpret_cast<float*>(cvt.buf);
-                out_samples_48k.assign(converted, converted + out_floats);
-                free(cvt.buf);
-            }
-
+            resample_to_48k_stereo(pSampleData, total_frames, cfg.channels, cfg.sampleRate, out_samples_48k);
             drmp3_free(pSampleData, nullptr);
             return true;
         } else if (ext == ".wav") {
@@ -219,40 +250,7 @@ namespace {
                 return false;
             }
 
-            if (sampleRate == 48000 && channels == 2) {
-                out_samples_48k.assign(pSampleData, pSampleData + (total_frames * 2));
-            } else {
-                SDL_AudioCVT cvt;
-                int ret = SDL_BuildAudioCVT(&cvt,
-                    AUDIO_F32SYS, static_cast<Uint8>(channels), static_cast<int>(sampleRate),
-                    AUDIO_F32SYS, 2, 48000);
-                if (ret < 0) {
-                    printf("[custom audio] SDL_BuildAudioCVT failed: %s\n", SDL_GetError());
-                    drwav_free(pSampleData, nullptr);
-                    return false;
-                }
-
-                cvt.len = static_cast<int>(total_frames * channels * sizeof(float));
-                cvt.buf = static_cast<Uint8*>(malloc(cvt.len * cvt.len_mult));
-                if (!cvt.buf) {
-                    drwav_free(pSampleData, nullptr);
-                    return false;
-                }
-                memcpy(cvt.buf, pSampleData, cvt.len);
-
-                if (SDL_ConvertAudio(&cvt) < 0) {
-                    printf("[custom audio] SDL_ConvertAudio failed: %s\n", SDL_GetError());
-                    free(cvt.buf);
-                    drwav_free(pSampleData, nullptr);
-                    return false;
-                }
-
-                size_t out_floats = cvt.len_cvt / sizeof(float);
-                float* converted = reinterpret_cast<float*>(cvt.buf);
-                out_samples_48k.assign(converted, converted + out_floats);
-                free(cvt.buf);
-            }
-
+            resample_to_48k_stereo(pSampleData, total_frames, channels, sampleRate, out_samples_48k);
             drwav_free(pSampleData, nullptr);
             return true;
         }

@@ -120,6 +120,9 @@ jobs:
           git -C TNTRecomp/lib/rt64 checkout 23cab603c4f9f4a8b369b38e036f1aa484603878
           git -C TNTRecomp/lib/rt64 submodule update --init --recursive
           chmod +x TNTRecomp/lib/rt64/src/contrib/dxc/bin/x64/dxc-linux || true
+          sudo cp TNTRecomp/lib/rt64/src/contrib/dxc/lib/x64/libdx* /usr/local/lib/ || true
+          sudo ldconfig || true
+          echo "LD_LIBRARY_PATH=/usr/local/lib:$GITHUB_WORKSPACE/TNTRecomp/lib/rt64/src/contrib/dxc/lib/x64:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Configure CMake (Linux)
         run: |
