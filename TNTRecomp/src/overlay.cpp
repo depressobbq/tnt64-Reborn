@@ -25,7 +25,7 @@ constexpr uint32_t MENU_BG_RDRAM_ADDR = 0x700000;
 constexpr uint32_t MENU_CAPSULE_RDRAM_ADDR = 0x730000;
 #if !defined(__vita__)
 extern const uint16_t g_menu_bg_rgba16[76800];
-extern const uint16_t g_menu_capsule_rgba16[4096];
+extern const uint16_t g_menu_capsule_rgba16[3264];
 #endif
 
 // ---- Frame / FPS overlay ----------------------------------------------------
@@ -349,8 +349,8 @@ namespace {
                 uint32_t val32 = (uint32_t(g_menu_bg_rgba16[i]) << 16) | g_menu_bg_rgba16[i + 1];
                 *reinterpret_cast<uint32_t*>(w.rdram + MENU_BG_RDRAM_ADDR + i * 2) = val32;
             }
-            // Selection Capsule Ring (256x16 RGBA5551)
-            for (size_t i = 0; i < 4096; i += 2) {
+            // Selection Capsule Ring (204x16 RGBA5551)
+            for (size_t i = 0; i < 3264; i += 2) {
                 uint32_t val32 = (uint32_t(g_menu_capsule_rgba16[i]) << 16) | g_menu_capsule_rgba16[i + 1];
                 *reinterpret_cast<uint32_t*>(w.rdram + MENU_CAPSULE_RDRAM_ADDR + i * 2) = val32;
             }
@@ -414,18 +414,18 @@ namespace {
         w.cmd(0xE200001Cu, 0);                 // render mode: none
 
         char tab_buf[64];
-        const char* t0 = (state.active_tab == 0) ? "<RULES>" : " RULES ";
-        const char* t1 = (state.active_tab == 1) ? "<ENHANCE>" : " ENHANCE ";
-        const char* t2 = (state.active_tab == 2) ? "<GFX>" : " GFX ";
-        const char* t3 = (state.active_tab == 3) ? "<DISCORD>" : " DISCORD ";
-        snprintf(tab_buf, sizeof(tab_buf), "[L] %s %s %s %s [R]", t0, t1, t2, t3);
+        const char* t0 = (state.active_tab == 0) ? "<RULES>" : "RULES";
+        const char* t1 = (state.active_tab == 1) ? "<ENHANCE>" : "ENHANCE";
+        const char* t2 = (state.active_tab == 2) ? "<GFX>" : "GFX";
+        const char* t3 = (state.active_tab == 3) ? "<DISCORD>" : "DISCORD";
+        snprintf(tab_buf, sizeof(tab_buf), "[L] %s  %s  %s  %s [R]", t0, t1, t2, t3);
 
         set_color(w, cimg0, 110, 225, 255); // Cyan
-        text(w, x_off + total_x_shift + 34 * s, y_off + 43 * s, s, tab_buf);
+        text(w, x_off + total_x_shift + 56 * s, y_off + 47 * s, s, tab_buf);
 
-        // Accent divider line under tab bar
+        // Accent divider line under tab bar (strictly between posts at x=52..260)
         set_color(w, cimg0, 100, 120, 160);
-        rect(w, x_off + total_x_shift + 30 * s, y_off + 55 * s, x_off + total_x_shift + 290 * s, y_off + 55 * s + s - 1);
+        rect(w, x_off + total_x_shift + 52 * s, y_off + 57 * s, x_off + total_x_shift + 260 * s, y_off + 57 * s + s - 1);
 
         // Helper: Build option rows for a given tab
         struct Row { std::string text; int color; }; // 0 white, 1 gold, 2 gray, 3 cyan, 4 green, 5 red
@@ -434,7 +434,7 @@ namespace {
             char b[64];
             if (tab_idx == 0) { // RULES
                 const char* ruleset_names[6] = { "AUTHENTIC TNT", "MODERN 7-BAG", "NES 1989", "TGM HISTORY", "PURE RANDOM", "BLOCK TRAINING" };
-                snprintf(b, sizeof(b), "PIECE RULESET: <%s>", ruleset_names[std::clamp(state.piece_ruleset, 0, 5)]);
+                snprintf(b, sizeof(b), "PIECE RULES: <%s>", ruleset_names[std::clamp(state.piece_ruleset, 0, 5)]);
                 r.push_back({ b, 3 });
 
                 snprintf(b, sizeof(b), "SEED RUN:      <%s>", state.seeded_run ? "FIXED SEED" : "RANDOM");
@@ -462,18 +462,18 @@ namespace {
                 snprintf(b, sizeof(b), "MATCH TIMER:   <%s>", state.timer_enabled ? "ON" : "OFF");
                 r.push_back({ b, state.timer_enabled ? 4 : 2 });
 
-                snprintf(b, sizeof(b), "POST-GAME PANEL:<%s>", state.panel_enabled ? "ON" : "OFF");
+                snprintf(b, sizeof(b), "POST-GAME:   <%s>", state.panel_enabled ? "ON" : "OFF");
                 r.push_back({ b, state.panel_enabled ? 4 : 2 });
 
                 r.push_back({ "SAVE & RETURN", 4 });
                 r.push_back({ "EXIT GAME", 5 });
             } else if (tab_idx == 2) { // GRAPHICS
                 const char* msaa_str[4] = { "OFF", "2X", "4X", "8X" };
-                snprintf(b, sizeof(b), "ANTIALIASING:  <%s>", msaa_str[std::clamp(state.antialiasing, 0, 3)]);
+                snprintf(b, sizeof(b), "ANTIALIAS:   <%s>", msaa_str[std::clamp(state.antialiasing, 0, 3)]);
                 r.push_back({ b, 3 });
 
                 const char* filter_str[3] = { "PIXEL SCALING", "LINEAR", "NEAREST" };
-                snprintf(b, sizeof(b), "TEXTURE FILTER:<%s>", filter_str[std::clamp(state.filtering, 0, 2)]);
+                snprintf(b, sizeof(b), "FILTERING:   <%s>", filter_str[std::clamp(state.filtering, 0, 2)]);
                 r.push_back({ b, 0 });
 
                 const char* upscale_str[3] = { "SCALED ONLY", "ALL", "ORIGINAL" };
@@ -488,7 +488,7 @@ namespace {
 
                 r.push_back({ "SAVE & RETURN", 4 });
             } else if (tab_idx == 3) { // DISCORD
-                snprintf(b, sizeof(b), "DISCORD WEBHOOK:<%s>", state.discord_enabled ? "ON" : "OFF");
+                snprintf(b, sizeof(b), "DISCORD LOG: <%s>", state.discord_enabled ? "ON" : "OFF");
                 r.push_back({ b, state.discord_enabled ? 4 : 2 });
 
                 snprintf(b, sizeof(b), "PLAYER NAME:    <%s>", state.player_name);
@@ -498,7 +498,7 @@ namespace {
                 r.push_back({ b, state.webhook_set ? 4 : 2 });
 
                 const char* test_label = state.test_post_sent ? "< POST SENT! >" : (state.webhook_set ? "[A] SEND TEST POST" : "[SET IN INI]");
-                snprintf(b, sizeof(b), "TEST WEBHOOK:   %s", test_label);
+                snprintf(b, sizeof(b), "TEST POST:   %s", test_label);
                 r.push_back({ b, state.test_post_sent ? 4 : 0 });
 
                 r.push_back({ "SAVE & RETURN", 4 });
@@ -507,19 +507,19 @@ namespace {
         };
 
         auto rows = build_tab_rows(state.active_tab);
-        const int row_base_y = y_off + 63 * s;
-        const int row_h = 18 * s;
+        const int row_base_y = y_off + 67 * s;
+        const int row_h = 13 * s;
 
-        // 4. Render authentic 256x16 N64 selection capsule ring over active row
+        // 4. Render authentic 204x16 N64 selection capsule ring over active row
         if (state.selected_row >= 0 && state.selected_row < int(rows.size())) {
-            int sel_x0 = x_off + total_x_shift + (32 + int(state.slide_offset_x)) * s;
+            int sel_x0 = x_off + total_x_shift + (54 + int(state.slide_offset_x)) * s;
             int sel_y0 = row_base_y + state.selected_row * row_h - 2 * s;
 
             // Subtle dark translucent backing inside the capsule
             set_color(w, cimg0, 18, 32, 60);
-            rect(w, sel_x0 + 6 * s, sel_y0 + 2 * s, sel_x0 + 250 * s, sel_y0 + 14 * s);
+            rect(w, sel_x0 + 4 * s, sel_y0 + 1 * s, sel_x0 + 200 * s, sel_y0 + 15 * s);
 
-            // Render authentic selection capsule / ring via 2 slices of 256x8 RGBA16
+            // Render authentic selection capsule / ring via 2 slices of 204x8 RGBA16
             w.cmd(0xE7000000u, 0);                 // G_RDPPIPESYNC
             w.cmd(0xD7000002u, 0x80008000u);       // G_TEXTURE: tile 0, on=1, scale 1.0
             w.cmd(0xE3000A01u, 0x00000000u);       // G_SETOTHERMODE_H: cycle type 1CYCLE
@@ -527,18 +527,18 @@ namespace {
             w.cmd(0xFC119623u, 0xFF2FFFFFu);       // G_SETCOMBINE: Texel0 decal RGBA
 
             for (int sl = 0; sl < 2; sl++) {
-                uint32_t cap_slice_addr = MENU_CAPSULE_RDRAM_ADDR + uint32_t(sl * 256 * 8 * 2);
+                uint32_t cap_slice_addr = MENU_CAPSULE_RDRAM_ADDR + uint32_t(sl * 204 * 8 * 2);
                 w.cmd(0xE6000000u, 0);                                     // G_RDPLOADSYNC
-                w.cmd(0xFD100000u | 255u, cap_slice_addr);                 // G_SETTIMG: RGBA16, 256px
+                w.cmd(0xFD100000u | 203u, cap_slice_addr);                 // G_SETTIMG: RGBA16, 204px
                 w.cmd(0xF5100000u, 0x07000000u);                           // G_SETTILE: tile 7
-                w.cmd(0xF3000000u, 0x07000000u | (2047u << 12) | 0x0020u); // G_LOADBLOCK: 2048 texels, DXT=32
-                w.cmd(0xF5100000u | (64u << 9), 0x00000000u);              // G_SETTILE: tile 0, line 64
-                w.cmd(0xF2000000u, (255u << 14) | (7u << 2));              // G_SETTILESIZE: 256x8
+                w.cmd(0xF3000000u, 0x07000000u | (1631u << 12) | 0x0029u); // G_LOADBLOCK: 1632 texels, DXT=41
+                w.cmd(0xF5100000u | (51u << 9), 0x00000000u);              // G_SETTILE: tile 0, line 51
+                w.cmd(0xF2000000u, (203u << 14) | (7u << 2));              // G_SETTILESIZE: 204x8
 
                 int cy0_px = sel_y0 + sl * 8 * s;
                 int cy1_px = sel_y0 + (sl + 1) * 8 * s;
                 int cx0_px = sel_x0;
-                int cx1_px = sel_x0 + 256 * s;
+                int cx1_px = sel_x0 + 204 * s;
 
                 uint32_t ulx_fp = uint32_t(cx0_px) << 2;
                 uint32_t uly_fp = uint32_t(cy0_px) << 2;
@@ -575,12 +575,12 @@ namespace {
                 int c = is_selected ? 1 : tab_rows[i].color;
                 set_color(w, cimg0, colors[c][0], colors[c][1], colors[c][2]);
 
-                int text_x = x_off + total_x_shift + (38 + tab_offset_x) * s;
+                int text_x = x_off + total_x_shift + (66 + tab_offset_x) * s;
                 int text_y = row_base_y + int(i) * row_h;
 
-                if (text_x >= x_off + 10 * s && text_x <= x_off + 280 * s) {
+                if (text_x >= x_off + 30 * s && text_x <= x_off + 260 * s) {
                     if (is_selected) {
-                        text(w, text_x - 10 * s, text_y, s, ">");
+                        text(w, text_x - 8 * s, text_y, s, ">");
                     }
                     text(w, text_x, text_y, s, tab_rows[i].text);
                 }
