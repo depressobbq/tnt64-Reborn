@@ -170,6 +170,13 @@ discord_webhook = ""
 
 ---
 
+## Known Issues
+- **Reborn Settings Menu Scaling & Transition Animations:**
+  - The Reborn Settings menu currently renders within a 320×240 overlay viewport rather than matching the native 400×300 N64 menu canvas resolution, causing slight letterboxing/pillarboxing relative to the stock 4:3 wood frame.
+  - Background textures and shift animations between tabs are currently static. Full native 400×300 geometry and dynamic transition animations will be addressed in a future update.
+
+---
+
 ## Acknowledgments
 - **H2O Entertainment & Blue Planet Software** for developing the timeless original game.
 - **Nintendo** for the Nintendo 64 platform.
