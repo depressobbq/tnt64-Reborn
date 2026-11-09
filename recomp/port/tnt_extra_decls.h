@@ -23,6 +23,7 @@ void tnt_on_cube_formed(uint8_t* rdram, recomp_context* ctx);     // TNTRecomp/s
 void tnt_on_line_cleared(uint8_t* rdram, recomp_context* ctx);    // TNTRecomp/src/tournament.cpp
 int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/tournament.cpp
 void tnt_apply_menu_patches(uint8_t* rdram); // TNTRecomp/src/tournament.cpp
+void tnt_on_init_player_bag(uint8_t* rdram, recomp_context* ctx); // TNTRecomp/src/tournament.cpp
 
 // Dynamic piece generation & filtering
 uint32_t tnt_on_deal_next_piece(uint8_t* rdram, uint32_t orig_piece); // TNTRecomp/src/tournament.cpp

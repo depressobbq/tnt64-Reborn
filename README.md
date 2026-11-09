@@ -20,10 +20,11 @@ It preserves authentic physics, rotation rules, and piece generation while addin
 - **Accurate Mixing:** Integrated software mixing matching original game volume levels with no dropouts or clicks.
 
 ### 🏆 Tournament Mode & Deterministic RNG
-- **Tournament Menu:** Configurable options menu accessible directly via **Options → TOURNAMENT**.
-- **Deterministic 32-Bit Seed Override:** Locks game PRNG to a consistent seed for synchronized matches, races, and challenges.
-- **Consistent Bag Generation:** Deterministic bag hashing ensures all players on identical seeds receive identical piece sequences throughout the match.
-- **In-Menu Seed Selection:** Adjust seeds with D-pad or bumper steps, or generate random seeds on demand.
+- **Tournament Menu:** Configurable options menu accessible directly via **Options → REBORN SETTINGS**.
+- **Deterministic 32-Bit Seed Override:** Locks the game piece bag generator and PRNG to a consistent seed for synchronized matches, races, and challenges. Every seeded run starts with the exact same opening bag in the exact same piece order.
+- **Consistent Bag Generation:** Deterministic bag hashing ensures all players on identical seeds receive identical piece sequences throughout the match, while unseeded runs generate completely random opening bags.
+- **Keyboard Seed Typing & Clipboard Paste:** Type hex digits (`0-9`, `A-F`) directly into **`MATCH SEED`** with Backspace/Delete, or paste with `Ctrl+V`.
+- **Use Last Match Seed:** Quickly load the seed from your previous run with **`USE LAST SEED`** or press `F5` in-game to copy the live seed to your clipboard.
 
 ### 📊 Live Sidebar HUD
 An integrated scorecard rendered alongside the playfield:
@@ -76,6 +77,7 @@ An integrated scorecard rendered alongside the playfield:
 ### Hotkeys
 - **F3**: Toggle on-screen FPS and VI counters.
 - **F4**: Open local HTML Leaderboard in default web browser.
+- **F5**: Copy active match seed to clipboard.
 - **F11** or **Alt + Enter**: Toggle Fullscreen.
 - **Escape**: Exit game to desktop.
 

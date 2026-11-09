@@ -32,12 +32,16 @@ namespace tnt::tournament {
 
     // Read live PRNG seed state directly from N64 RDRAM
     uint32_t read_live_seed(uint8_t* rdram);
+    uint32_t get_live_seed();
 
     // Post scores to Discord webhook on match completion
     void on_match_finish(int mode, const std::string& name, uint32_t score, uint32_t true_lines, uint32_t seconds);
 
     // Master Settings In-Game Menu (Scene 16)
     bool is_options_menu_open();
+    bool is_seed_editing();
+    bool on_key_down(int key, uint16_t mod);
+
     struct MenuRenderState {
         int active_tab = 0; // 0: RULES, 1: ENHANCEMENTS, 2: GRAPHICS, 3: DISCORD
         int selected_row = 0;
@@ -53,6 +57,8 @@ namespace tnt::tournament {
         bool block_training = false;
         bool seeded_run = false;
         uint32_t current_seed = 0x12345678;
+        uint32_t last_match_seed = 0x12345678;
+        bool seed_editing = false;
         int tournament_mode = 0; // 0: Marathon, 1: Sprint, 2: Ultra
         int players = 1;         // 1: 1 Player, 2: 2 Players
 
@@ -88,6 +94,7 @@ extern "C" {
     void tnt_on_line_cleared(uint8_t* rdram, recomp_context* ctx);
     int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx);
     void tnt_apply_menu_patches(uint8_t* rdram);
+    void tnt_on_init_player_bag(uint8_t* rdram, recomp_context* ctx);
 
     // Dynamic piece generation & filtering
     uint32_t tnt_on_deal_next_piece(uint8_t* rdram, uint32_t orig_piece);

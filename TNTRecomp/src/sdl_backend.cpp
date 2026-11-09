@@ -38,6 +38,7 @@
 #include "tnt_game.hpp"
 #include "sdl_audio.hpp"
 #include "leaderboard.hpp"
+#include "tournament.hpp"
 #include "settings.hpp"
 #include "icon_rgba.h"
 
@@ -148,15 +149,21 @@ namespace {
         const Uint8* k = SDL_GetKeyboardState(nullptr);
         PadState& p0 = next[0];
         p0.connected = true; // keyboard always drives controller 1
-        for (const KeyBinding& kb : keymap) {
-            if (!k[kb.scancode]) continue;
-            p0.buttons |= kb.bit;
-            switch (kb.stick) {
-                case StickUp: p0.y = 1.0f; break;
-                case StickDown: p0.y = -1.0f; break;
-                case StickLeft: p0.x = -1.0f; break;
-                case StickRight: p0.x = 1.0f; break;
-                default: break;
+        if (tnt::tournament::is_seed_editing()) {
+            p0.buttons = 0;
+            p0.x = 0.0f;
+            p0.y = 0.0f;
+        } else {
+            for (const KeyBinding& kb : keymap) {
+                if (!k[kb.scancode]) continue;
+                p0.buttons |= kb.bit;
+                switch (kb.stick) {
+                    case StickUp: p0.y = 1.0f; break;
+                    case StickDown: p0.y = -1.0f; break;
+                    case StickLeft: p0.x = -1.0f; break;
+                    case StickRight: p0.x = 1.0f; break;
+                    default: break;
+                }
             }
         }
         {
@@ -395,6 +402,9 @@ namespace {
                     tnt::leaderboard::on_button(); // hides the after-game high-score panel
                     break;
                 case SDL_KEYDOWN:
+                    if (tnt::tournament::on_key_down(e.key.keysym.sym, e.key.keysym.mod)) {
+                        break;
+                    }
                     if (!e.key.repeat && (e.key.keysym.scancode < SDL_SCANCODE_F1 || e.key.keysym.scancode > SDL_SCANCODE_F12)) tnt::leaderboard::on_button();
                     if (e.key.keysym.scancode == SDL_SCANCODE_ESCAPE && escape_quits) {
                         tnt::audio::shutdown_custom_audio();
@@ -403,6 +413,13 @@ namespace {
                     if (e.key.keysym.scancode == SDL_SCANCODE_F11 && !e.key.repeat) toggle_fullscreen();
                     if (e.key.keysym.scancode == SDL_SCANCODE_F3 && !e.key.repeat) tnt_overlay_enabled = !tnt_overlay_enabled;
                     if (e.key.keysym.scancode == SDL_SCANCODE_F4 && !e.key.repeat) open_leaderboard();
+                    if (e.key.keysym.scancode == SDL_SCANCODE_F5 && !e.key.repeat) {
+                        uint32_t live_s = tnt::tournament::get_live_seed();
+                        char sbuf[32];
+                        snprintf(sbuf, sizeof(sbuf), "0x%08X", live_s);
+                        SDL_SetClipboardText(sbuf);
+                        printf("[seed] Copied current match seed %s to clipboard\n", sbuf);
+                    }
                     if (e.key.keysym.scancode == SDL_SCANCODE_RETURN && (e.key.keysym.mod & KMOD_ALT) && !e.key.repeat) toggle_fullscreen();
                     break;
                 case SDL_CONTROLLERDEVICEADDED:

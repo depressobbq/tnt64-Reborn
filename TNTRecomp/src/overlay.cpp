@@ -440,8 +440,16 @@ namespace {
                 snprintf(b, sizeof(b), "SEED RUN:      <%s>", state.seeded_run ? "FIXED SEED" : "RANDOM");
                 r.push_back({ b, state.seeded_run ? 4 : 2 });
 
-                snprintf(b, sizeof(b), "MATCH SEED:    <0x%08X>", state.current_seed);
-                r.push_back({ b, 3 });
+                if (state.seed_editing) {
+                    snprintf(b, sizeof(b), "MATCH SEED:   [0x%08X_]", state.current_seed);
+                    r.push_back({ b, 1 });
+                } else {
+                    snprintf(b, sizeof(b), "MATCH SEED:    <0x%08X>", state.current_seed);
+                    r.push_back({ b, 3 });
+                }
+
+                snprintf(b, sizeof(b), "USE LAST SEED: <0x%08X>", state.last_match_seed);
+                r.push_back({ b, (state.last_match_seed != 0) ? 0 : 2 });
 
                 r.push_back({ "RANDOMIZE SEED", 0 });
 
@@ -592,6 +600,22 @@ namespace {
             draw_tab_content(prev_rows, int(state.prev_tab_offset_x), false);
         }
         draw_tab_content(rows, int(state.slide_offset_x), true);
+
+        // Contextual typing hint for seed row
+        if (state.active_tab == 0) {
+            if (state.selected_row == 2) {
+                if (state.seed_editing) {
+                    set_color(w, cimg0, 255, 220, 65);
+                    text(w, x_off + total_x_shift + 66 * s, row_base_y + 8 * row_h, s, "TYPE HEX | BACKSPACE | ENTER: DONE");
+                } else {
+                    set_color(w, cimg0, 145, 155, 185);
+                    text(w, x_off + total_x_shift + 66 * s, row_base_y + 8 * row_h, s, "A: EDIT SEED | CTRL+V: PASTE");
+                }
+            } else if (state.selected_row == 3) {
+                set_color(w, cimg0, 145, 155, 185);
+                text(w, x_off + total_x_shift + 66 * s, row_base_y + 8 * row_h, s, "A: LOAD SEED FROM LAST MATCH");
+            }
+        }
     }
 #endif
 

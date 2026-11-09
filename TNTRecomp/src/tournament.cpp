@@ -2,6 +2,8 @@
 #include "tournament.hpp"
 #include "settings.hpp"
 #include "custom_audio.hpp"
+#define SDL_MAIN_HANDLED
+#include "SDL.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -85,6 +87,7 @@ namespace {
         bool block_training = false;
         bool seeded_run = false;
         uint32_t current_seed = 0x12345678;
+        bool seed_editing = false;
         int tournament_mode = 0; // 0: Marathon, 1: Sprint, 2: Ultra
         int players = 1;         // 1 or 2
 
@@ -147,6 +150,105 @@ namespace tnt::tournament {
         return rd32(rdram, SEED_ADDR);
     }
 
+    uint32_t get_live_seed() {
+        return g_match_initial_seed.load();
+    }
+
+    bool is_seed_editing() {
+        return g_options_menu_open.load() && g_menu_state.active_tab == 0 && g_menu_state.selected_row == 2 && g_menu_state.seed_editing;
+    }
+
+    bool on_key_down(int key, uint16_t mod) {
+        if (!g_options_menu_open.load()) return false;
+        if (g_menu_state.active_tab != 0) return false;
+        if (g_menu_state.selected_row != 2) return false;
+
+        // Clipboard Paste: Ctrl + V
+        if ((mod & KMOD_CTRL) && (key == 'v' || key == 'V' || key == SDLK_v)) {
+            char* clip = SDL_GetClipboardText();
+            if (clip) {
+                std::string str = clip;
+                SDL_free(clip);
+                uint32_t parsed = parse_seed_string(str);
+                if (parsed != 0 || str == "0" || str == "0x0" || str == "0x00000000") {
+                    g_menu_state.current_seed = parsed;
+                    g_menu_state.seeded_run = true;
+                    g_menu_state.seed_editing = false;
+                    printf("[seed] Pasted seed: 0x%08X\n", parsed);
+                    return true;
+                }
+            }
+            return true;
+        }
+
+        // Clipboard Copy: Ctrl + C
+        if ((mod & KMOD_CTRL) && (key == 'c' || key == 'C' || key == SDLK_c)) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "0x%08X", g_menu_state.current_seed);
+            SDL_SetClipboardText(buf);
+            printf("[seed] Copied seed to clipboard: %s\n", buf);
+            return true;
+        }
+
+        // Backspace: shift right by 4 bits (erase last hex digit)
+        if (key == SDLK_BACKSPACE) {
+            g_menu_state.current_seed >>= 4;
+            g_menu_state.seed_editing = true;
+            g_menu_state.seeded_run = true;
+            return true;
+        }
+
+        // Delete: clear to 0
+        if (key == SDLK_DELETE) {
+            g_menu_state.current_seed = 0;
+            g_menu_state.seed_editing = true;
+            g_menu_state.seeded_run = true;
+            return true;
+        }
+
+        // Enter / Return / Escape: confirm and finish editing
+        if (key == SDLK_RETURN || key == SDLK_KP_ENTER || key == SDLK_ESCAPE) {
+            if (g_menu_state.seed_editing) {
+                g_menu_state.seed_editing = false;
+                g_menu_state.seeded_run = true;
+                return true;
+            }
+        }
+
+        // Hex digits: 0..9
+        if (key >= SDLK_0 && key <= SDLK_9) {
+            uint32_t d = static_cast<uint32_t>(key - SDLK_0);
+            g_menu_state.current_seed = ((g_menu_state.current_seed & 0x0FFFFFFF) << 4) | d;
+            g_menu_state.seed_editing = true;
+            g_menu_state.seeded_run = true;
+            return true;
+        }
+        if (key >= SDLK_KP_0 && key <= SDLK_KP_9) {
+            uint32_t d = static_cast<uint32_t>(key - SDLK_KP_0);
+            g_menu_state.current_seed = ((g_menu_state.current_seed & 0x0FFFFFFF) << 4) | d;
+            g_menu_state.seed_editing = true;
+            g_menu_state.seeded_run = true;
+            return true;
+        }
+        // Hex letters: A..F / a..f
+        if ((key >= 'a' && key <= 'f') || (key >= 'A' && key <= 'F')) {
+            char c = static_cast<char>(key);
+            uint32_t d = 0;
+            if (c >= 'a' && c <= 'f') d = 10 + (c - 'a');
+            else if (c >= 'A' && c <= 'F') d = 10 + (c - 'A');
+            g_menu_state.current_seed = ((g_menu_state.current_seed & 0x0FFFFFFF) << 4) | d;
+            g_menu_state.seed_editing = true;
+            g_menu_state.seeded_run = true;
+            return true;
+        }
+
+        if (key == 'x' || key == 'X') {
+            return true;
+        }
+
+        return false;
+    }
+
     bool is_options_menu_open() {
         return g_options_menu_open.load();
     }
@@ -179,6 +281,8 @@ namespace tnt::tournament {
         s.players = g_menu_state.players;
         s.seeded_run = g_menu_state.seeded_run;
         s.current_seed = g_menu_state.current_seed;
+        s.last_match_seed = g_match_initial_seed.load();
+        s.seed_editing = g_menu_state.seed_editing;
         s.hud_enabled = g_menu_state.hud_enabled;
         s.timer_enabled = g_menu_state.timer_enabled;
         s.panel_enabled = g_menu_state.panel_enabled;
@@ -212,6 +316,36 @@ extern "C" void tnt_apply_menu_patches(uint8_t* rdram) {
         // CUSTOM track label for Audio Menu at 0x807E0080
         wr_string(rdram, 0x807E0080, "CUSTOM.");
     }
+}
+
+extern "C" void tnt_on_init_player_bag(uint8_t* rdram, recomp_context* ctx) {
+    if (!rdram || !ctx) return;
+    uint32_t bag_ptr = ctx->r4;
+    uint32_t seed_ptr = ctx->r5;
+
+    const auto& s = tnt::settings();
+    uint32_t active_seed = 0;
+    if (s.seeded_run) {
+        active_seed = parse_seed_string(s.custom_seed);
+        if (active_seed == 0) active_seed = 0x12345678;
+        // Overwrite the seed pointer in RDRAM so func_800713F0 populates the bag with this exact seed
+        wr32(rdram, seed_ptr, active_seed);
+        printf("[seed] Fixed seed applied to player bag (0x%08X): 0x%08X\n", bag_ptr, active_seed);
+    } else {
+        active_seed = rd32(rdram, seed_ptr);
+        printf("[seed] Random seed applied to player bag (0x%08X): 0x%08X\n", bag_ptr, active_seed);
+    }
+
+    g_match_initial_seed.store(active_seed);
+    tnt_reset_piece_generator();
+
+    g_live_cubes_made.store(0);
+    g_live_gold_cubes.store(0);
+    g_live_silver_cubes.store(0);
+    g_live_gold_lines.store(0);
+    g_live_silver_lines.store(0);
+    g_bag_counter.store(0);
+    g_is_in_match.store(true);
 }
 
 extern "C" void tnt_on_match_piece_init(uint8_t* rdram, recomp_context* ctx) {
@@ -394,8 +528,13 @@ extern "C" void tnt_reset_piece_generator(void) {
         g_piece_rng_state = parse_seed_string(s.custom_seed);
         if (g_piece_rng_state == 0) g_piece_rng_state = 0x12345678;
     } else {
-        auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-        g_piece_rng_state = static_cast<uint32_t>(now ^ (now >> 32));
+        uint32_t cur = g_match_initial_seed.load();
+        if (cur != 0) {
+            g_piece_rng_state = cur;
+        } else {
+            auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+            g_piece_rng_state = static_cast<uint32_t>(now ^ (now >> 32));
+        }
     }
     g_block_bag_idx = 5;
     g_seven_bag_idx = 7;
@@ -852,14 +991,16 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
     // Tab 1 (ENHANCEMENTS): 5 rows
     // Tab 2 (GRAPHICS): 6 rows
     // Tab 3 (DISCORD): 5 rows
-    int row_counts[4] = { 7, 5, 6, 5 };
+    int row_counts[4] = { 8, 5, 6, 5 };
     int max_rows = row_counts[g_menu_state.active_tab];
 
     if (pressed & 0x0800) { // Up
         g_menu_state.selected_row = (g_menu_state.selected_row + max_rows - 1) % max_rows;
+        g_menu_state.seed_editing = false;
     }
     if (pressed & 0x0400) { // Down
         g_menu_state.selected_row = (g_menu_state.selected_row + 1) % max_rows;
+        g_menu_state.seed_editing = false;
     }
 
     bool exit_menu = false;
@@ -877,26 +1018,44 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
                     g_menu_state.seeded_run = !g_menu_state.seeded_run;
                 }
                 break;
-            case 2: // Match Seed Hex Adjust
-                if (pressed & 0x0100) g_menu_state.current_seed += 0x00010000;
-                if (pressed & 0x0200) g_menu_state.current_seed -= 0x00010000;
+            case 2: // Match Seed Hex Adjust & Typing toggle
+                if (pressed & 0x8000) { // A button: toggle edit
+                    g_menu_state.seed_editing = !g_menu_state.seed_editing;
+                    if (g_menu_state.seed_editing) {
+                        g_menu_state.seeded_run = true;
+                    }
+                }
+                if (!g_menu_state.seed_editing) {
+                    if (pressed & 0x0100) g_menu_state.current_seed += 0x00010000;
+                    if (pressed & 0x0200) g_menu_state.current_seed -= 0x00010000;
+                }
                 break;
-            case 3: // Randomize Seed
+            case 3: // USE LAST MATCH SEED
+                if (pressed & (0x8000 | 0x0100 | 0x0200)) {
+                    uint32_t last = g_match_initial_seed.load();
+                    if (last != 0) {
+                        g_menu_state.current_seed = last;
+                        g_menu_state.seeded_run = true;
+                        printf("[seed] Loaded last match seed: 0x%08X\n", last);
+                    }
+                }
+                break;
+            case 4: // Randomize Seed
                 if (pressed & (0x8000 | 0x0100 | 0x0200)) {
                     g_menu_state.current_seed = static_cast<uint32_t>(rand()) ^ (static_cast<uint32_t>(rand()) << 16);
                     if (g_menu_state.current_seed == 0) g_menu_state.current_seed = 0x12345678;
                 }
                 break;
-            case 4: // Game Type: 0: Marathon, 1: Sprint, 2: Ultra
+            case 5: // Game Type: 0: Marathon, 1: Sprint, 2: Ultra
                 if (pressed & 0x0100) g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 1) % 3;
                 if (pressed & 0x0200) g_menu_state.tournament_mode = (g_menu_state.tournament_mode + 2) % 3;
                 break;
-            case 5: // Match Mode: 1 Player / 2 Players
+            case 6: // Match Mode: 1 Player / 2 Players
                 if (pressed & (0x0100 | 0x0200 | 0x8000)) {
                     g_menu_state.players = (g_menu_state.players == 1) ? 2 : 1;
                 }
                 break;
-            case 6: // Save & Return
+            case 7: // Save & Return
                 if (pressed & (0x8000 | 0x1000)) {
                     exit_menu = true;
                 }
@@ -1060,7 +1219,11 @@ extern "C" int tnt_handle_tournament_options(uint8_t* rdram, recomp_context* ctx
     }
 
     if (pressed & 0x4000) { // B Button: Return / Back
-        exit_menu = true;
+        if (g_menu_state.seed_editing) {
+            g_menu_state.seed_editing = false;
+        } else {
+            exit_menu = true;
+        }
     }
 
     if (exit_menu) {
